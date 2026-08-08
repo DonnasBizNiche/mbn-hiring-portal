@@ -1,0 +1,702 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MBN — Assessment Review</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #273549;
+      --border: #334155; --accent: #3b82f6; --accent-h: #2563eb;
+      --text: #f1f5f9; --muted: #94a3b8; --dim: #64748b;
+      --success: #10b981; --warn: #f59e0b; --danger: #ef4444;
+      --r: 12px; --rs: 8px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* Header */
+    header { display:flex; align-items:center; justify-content:space-between; padding:14px 28px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+    .hbrand { display:flex; align-items:center; gap:12px; }
+    .hlogo { width:36px; height:36px; border-radius:8px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; }
+    .htitle { font-size:15px; font-weight:700; }
+    .hsub   { font-size:11px; color:var(--muted); }
+    .hbadge { font-size:11px; padding:4px 12px; border-radius:20px; background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); color:#fca5a5; }
+
+    /* Screens */
+    .screen { display:none; flex:1; }
+    .screen.active { display:flex; flex-direction:column; }
+
+    /* Login */
+    .login-wrap { max-width:440px; margin:64px auto; padding:0 24px; }
+    .login-wrap h1 { font-size:24px; font-weight:800; margin-bottom:6px; }
+    .login-wrap p  { color:var(--muted); font-size:14px; margin-bottom:32px; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:28px; }
+    .fg { margin-bottom:16px; }
+    .fg label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.06em; }
+    .fg input { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:var(--rs); padding:11px 14px; color:var(--text); font-size:14px; font-family:inherit; }
+    .fg input:focus { outline:none; border-color:var(--accent); }
+    .fg input::placeholder { color:var(--dim); }
+    .btn { display:block; width:100%; padding:13px; background:var(--accent); color:#fff; border:none; border-radius:var(--rs); font-size:15px; font-weight:700; cursor:pointer; transition:background .15s; }
+    .btn:hover { background:var(--accent-h); }
+    .btn:disabled { opacity:.4; cursor:not-allowed; }
+    .btn-sm { width:auto; display:inline-block; padding:8px 16px; font-size:13px; }
+    .btn-sec { background:var(--surface2); border:1px solid var(--border); color:var(--text); }
+    .btn-sec:hover { background:var(--border); }
+    .err { background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); border-radius:var(--rs); padding:11px 14px; font-size:13px; color:#fca5a5; margin-top:12px; }
+
+    /* Report */
+    .report-outer { flex:1; overflow-y:auto; padding:32px 24px 64px; }
+    .report-inner { max-width:900px; margin:0 auto; }
+
+    /* Report header strip */
+    .rhead { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:24px 28px; margin-bottom:24px; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+    .rhead-info h2 { font-size:20px; font-weight:800; margin-bottom:4px; }
+    .rhead-info p  { color:var(--muted); font-size:13px; }
+    .rhead-meta { display:flex; gap:10px; flex-wrap:wrap; }
+    .chip { font-size:11px; padding:5px 12px; border-radius:20px; font-weight:600; }
+    .chip-blue  { background:rgba(59,130,246,.15); border:1px solid rgba(59,130,246,.3); color:#93c5fd; }
+    .chip-green { background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.3); color:#6ee7b7; }
+    .rhead-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+    /* Score card */
+    .score-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:24px 28px; margin-bottom:24px; }
+    .score-card h3 { font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:20px; }
+    .rubric-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    @media(max-width:640px){ .rubric-grid { grid-template-columns:1fr; } }
+    .rrow { background:var(--surface2); border:1px solid var(--border); border-radius:var(--rs); padding:16px; }
+    .rrow-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
+    .rrow-name { font-size:14px; font-weight:700; }
+    .rrow-wt { font-size:11px; color:var(--muted); margin-top:2px; }
+    .stars { display:flex; gap:4px; }
+    .star { width:26px; height:26px; border-radius:6px; border:1px solid var(--border); background:var(--surface); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; transition:all .1s; }
+    .star.on { background:var(--warn); border-color:var(--warn); }
+    .star:hover { border-color:var(--warn); }
+    .rrow-note textarea { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--muted); font-size:12px; font-family:inherit; resize:vertical; min-height:54px; margin-top:8px; }
+    .rrow-note textarea:focus { outline:none; border-color:var(--accent); color:var(--text); }
+    .score-total { margin-top:20px; padding-top:18px; border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+    .score-num { font-size:28px; font-weight:800; }
+    .score-label { font-size:13px; color:var(--muted); margin-top:2px; }
+    .rec-wrap { display:flex; align-items:center; gap:10px; }
+    .rec-wrap label { font-size:13px; color:var(--muted); white-space:nowrap; }
+    .rec-sel { background:var(--surface2); border:1px solid var(--border); border-radius:var(--rs); padding:8px 12px; color:var(--text); font-size:14px; font-weight:600; cursor:pointer; }
+    .rec-sel:focus { outline:none; border-color:var(--accent); }
+
+    /* Response sections */
+    .sections { display:flex; flex-direction:column; gap:12px; }
+    .sec { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
+    .sec-hdr { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; cursor:pointer; user-select:none; }
+    .sec-hdr:hover { background:var(--surface2); }
+    .sec-title { font-size:14px; font-weight:700; }
+    .sec-tag { font-size:11px; padding:3px 10px; border-radius:12px; font-weight:600; background:var(--surface2); border:1px solid var(--border); color:var(--dim); }
+    .chevron { color:var(--dim); font-size:16px; transition:transform .2s; }
+    .sec.open .chevron { transform:rotate(180deg); }
+    .sec-body { display:none; border-top:1px solid var(--border); padding:20px; }
+    .sec.open .sec-body { display:block; }
+    .response-text { font-size:14px; line-height:1.75; color:var(--text); white-space:pre-wrap; }
+    .no-response { color:var(--dim); font-size:13px; font-style:italic; }
+
+    /* Overall notes */
+    .notes-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:24px 28px; margin-top:24px; }
+    .notes-card h3 { font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px; }
+    .notes-card textarea { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:var(--rs); padding:12px 14px; color:var(--text); font-size:14px; font-family:inherit; resize:vertical; min-height:100px; }
+    .notes-card textarea:focus { outline:none; border-color:var(--accent); }
+    .save-row { margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .saved-msg { font-size:13px; color:var(--success); display:none; }
+    .saved-msg.show { display:inline; }
+
+    .spinner { display:inline-block; width:18px; height:18px; border:2px solid rgba(255,255,255,.2); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="hbrand">
+    <div class="hlogo">MBN</div>
+    <div>
+      <div class="htitle">Assessment Review Portal</div>
+      <div class="hsub">Hiring Team Access Only</div>
+    </div>
+  </div>
+  <div class="hbadge">🔒 Restricted</div>
+</header>
+
+<!-- LOGIN SCREEN -->
+<div class="screen active" id="sLogin">
+  <div class="login-wrap">
+    <h1>Reviewer Access</h1>
+    <p>Enter your admin passcode and the candidate's completion code to access their report.</p>
+    <div class="card">
+      <div class="fg">
+        <label>Admin Passcode</label>
+        <input type="password" id="inPass" placeholder="Enter hiring team passcode" autocomplete="off">
+      </div>
+      <div class="fg">
+        <label>Completion Code</label>
+        <input type="text" id="inCode" placeholder="e.g. MBN-7K4P" autocomplete="off" style="text-transform:uppercase">
+      </div>
+      <button class="btn" id="loadBtn" onclick="loadReport()">Load Report</button>
+      <div class="err" id="loginErr" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT SCREEN -->
+<div class="screen" id="sReport">
+  <div class="report-outer">
+    <div class="report-inner">
+
+      <!-- Header -->
+      <div class="rhead">
+        <div class="rhead-info">
+          <h2 id="rName">—</h2>
+          <p id="rEmail">—</p>
+          <p style="margin-top:4px;font-size:12px;color:var(--dim)" id="rSubmitted">—</p>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px">
+          <div class="rhead-meta">
+            <span class="chip chip-blue" id="rCode">—</span>
+            <span class="chip chip-green" id="rPosition">—</span>
+          </div>
+          <div class="rhead-actions">
+            <button class="btn btn-sm btn-sec" onclick="copyReport()">Copy Summary</button>
+            <button class="btn btn-sm btn-sec" onclick="downloadReport()">Download JSON</button>
+            <button class="btn btn-sm btn-sec" onclick="newSearch()">← New Search</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Overall Assessment -->
+      <div class="score-card" id="overviewPanel" style="margin-bottom:24px">
+        <!-- injected by JS -->
+      </div>
+
+      <!-- AI Suspicion Panel -->
+      <div class="score-card" id="suspicionPanel" style="margin-bottom:24px">
+        <!-- injected by JS -->
+      </div>
+
+      <!-- Scoring Rubric -->
+      <div class="score-card">
+        <h3>Scoring Rubric <span style="font-size:11px;font-weight:500;color:var(--dim);text-transform:none;letter-spacing:0">(pre-filled by Claude — adjust as needed)</span></h3>
+        <div class="rubric-grid" id="rubricGrid">
+          <!-- injected by JS -->
+        </div>
+        <div class="score-total">
+          <div>
+            <div class="score-num" id="scoreTotal">—</div>
+            <div class="score-label">Weighted score out of 5.0</div>
+          </div>
+          <div class="rec-wrap">
+            <label>Recommendation:</label>
+            <select class="rec-sel" id="recSelect" onchange="saveLocal()">
+              <option value="">— Select —</option>
+              <option value="strong-yes">✅ Strong Yes</option>
+              <option value="yes">👍 Yes</option>
+              <option value="maybe">🤔 Maybe / Panel</option>
+              <option value="no">👎 No</option>
+              <option value="strong-no">❌ Strong No</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Response Sections -->
+      <div class="sections" id="sections">
+        <!-- injected by JS -->
+      </div>
+
+      <!-- Overall Notes -->
+      <div class="notes-card">
+        <h3>Reviewer Notes</h3>
+        <textarea id="reviewerNotes" placeholder="Overall impressions, specific observations, follow-up questions for the interview…" oninput="saveLocal()"></textarea>
+        <div class="save-row">
+          <button class="btn btn-sm" onclick="saveLocal()">Save Notes</button>
+          <span class="saved-msg" id="savedMsg">✓ Saved locally</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/questions.js"></script>
+<script>
+const RUBRICS = {
+  tech_seo: [
+    { key:'diagnostic',    label:'Diagnostic Reasoning', weight:.25, score:'diagnostic_reasoning', desc:'Identifies missing data before proposing fixes; separates symptoms from causes' },
+    { key:'technical',     label:'Technical Depth',      weight:.25, score:'technical_depth',      desc:'Accurate, specific knowledge across crawl, CWV, JS SEO, canonicals, hreflang' },
+    { key:'priority',      label:'Prioritization',       weight:.20, score:'prioritization',       desc:'Ranks issues by business impact with clear, defensible logic' },
+    { key:'communication', label:'Communication',        weight:.15, score:'communication',        desc:'Translates findings for non-technical stakeholders without jargon' },
+    { key:'selfawareness', label:'Self-Awareness',       weight:.15, score:'self_awareness',       desc:'Honest about gaps; articulates how they manage limitations' },
+  ],
+  seo_strategist: [
+    { key:'revenue',     label:'Revenue Orientation',   weight:.30, score:'revenue_orientation',     desc:'Ties every recommendation to margin, LTV, and conversion — not sessions' },
+    { key:'mapping',     label:'Keyword → Intent → Page', weight:.20, score:'keyword_mapping',       desc:'Reads intent correctly, assigns the right page type, knows when NOT to target' },
+    { key:'channel',     label:'Channel Strategy',      weight:.20, score:'channel_strategy',        desc:'Real depth across e-commerce, local, GBP/reputation, and national' },
+    { key:'measurement', label:'Measurement & Forecasting', weight:.15, score:'measurement_forecasting', desc:'Reads data accurately; builds defensible forecasts; proves attribution' },
+    { key:'influence',   label:'Stakeholder Influence', weight:.15, score:'stakeholder_influence',   desc:'Pushes back on vanity requests; communicates to non-technical executives' },
+  ],
+  ppc_strategist: [
+    { key:'profitability', label:'Profitability Math',     weight:.30, score:'profitability_math',     desc:'Derives targets from margin; reads ROAS against breakeven, not in isolation' },
+    { key:'diagnostics',   label:'Account Diagnostics',    weight:.20, score:'account_diagnostics',    desc:'Reads performance data accurately; systematic troubleshooting' },
+    { key:'platform',      label:'Platform Depth',         weight:.20, score:'platform_depth',         desc:'Real command of Shopping, Performance Max, bidding, match types, LSAs' },
+    { key:'measurement',   label:'Measurement Integrity',  weight:.15, score:'measurement_integrity',  desc:'Tracking accuracy, attribution, and incrementality thinking' },
+    { key:'influence',     label:'Stakeholder Influence',  weight:.15, score:'stakeholder_influence',  desc:'Handles hard client conversations; pushes back with evidence' },
+  ],
+};
+
+let RUBRIC = RUBRICS.tech_seo;
+
+function assessmentType(r){
+  if(r.assessment_type && RUBRICS[r.assessment_type]) return r.assessment_type;
+  if(r.scores && r.scores.profitability_math  != null) return 'ppc_strategist';
+  if(r.scores && r.scores.revenue_orientation != null) return 'seo_strategist';
+  return 'tech_seo';
+}
+
+const STEPS = [
+  { key:'step1_background',            label:'1. Background & Experience',            phase:'Orientation' },
+  { key:'step2_audit_process',         label:'2. Audit Process',                      phase:'Orientation' },
+  { key:'step3_diagnostic_questions',  label:'3. Diagnostic — Initial Questions',     phase:'Diagnostic Scenario' },
+  { key:'step4_priority_issues',       label:'4. Diagnostic — Priority Issues',       phase:'Diagnostic Scenario' },
+  { key:'step5_crawl_budget',          label:'5. Crawl Budget',                       phase:'Technical Deep Dives' },
+  { key:'step6_inp_cwv',               label:'6. Core Web Vitals (INP)',              phase:'Technical Deep Dives' },
+  { key:'step7_javascript_seo',        label:'7. JavaScript SEO',                     phase:'Technical Deep Dives' },
+  { key:'step8_log_files',             label:'8. Log File Analysis',                  phase:'Technical Deep Dives' },
+  { key:'step9_canonicals',            label:'9. Canonicalization',                   phase:'Technical Deep Dives' },
+  { key:'step10_robots_txt',           label:'10. Robots.txt Review',                 phase:'Work Samples' },
+  { key:'step11_hreflang',             label:'11. Hreflang Implementation',           phase:'Work Samples' },
+  { key:'step12_prioritization',       label:'12. Prioritization',                    phase:'Prioritization' },
+  { key:'step13_client_communication', label:'13. CMO Executive Summary',             phase:'Client Communication' },
+  { key:'step14_self_assessment',      label:'14. Self-Assessment',                   phase:'Self-Assessment' },
+];
+
+const REC_META = {
+  strong_hire: { label:'STRONG HIRE', color:'#10b981', icon:'✅' },
+  hire:        { label:'HIRE',        color:'#22c55e', icon:'👍' },
+  maybe:       { label:'MAYBE',       color:'#f59e0b', icon:'🤔' },
+  no_hire:     { label:'NO HIRE',     color:'#ef4444', icon:'👎' },
+};
+
+let currentReport = null;
+let scores = {};
+
+function el(id){ return document.getElementById(id); }
+
+/* ── KEYBOARD SHORTCUTS ─────────────────────────────── */
+el('inCode').addEventListener('input', function(){
+  this.value = this.value.toUpperCase().replace(/[^A-Z0-9-]/g,'');
+});
+['inPass','inCode'].forEach(id => {
+  el(id).addEventListener('keydown', e => { if(e.key==='Enter') loadReport(); });
+});
+
+/* ── LOAD REPORT ────────────────────────────────────── */
+async function loadReport(){
+  const pass = el('inPass').value.trim();
+  const code = el('inCode').value.trim().toUpperCase();
+  const btn  = el('loadBtn');
+  const errEl = el('loginErr');
+
+  errEl.style.display = 'none';
+  if(!pass){ showErr('Please enter your admin passcode.'); return; }
+  if(!code){ showErr('Please enter a completion code.'); return; }
+
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+
+  try{
+    const r = await fetch(`/api/report/${encodeURIComponent(code)}`, {
+      headers: { 'X-Admin-Passcode': pass }
+    });
+    if(r.status === 401){ showErr('Incorrect passcode.'); return; }
+    if(r.status === 404){ showErr(`No report found for code ${code}. Check the code and try again.`); return; }
+    if(!r.ok){ showErr(`Server error (${r.status}). Please try again.`); return; }
+
+    currentReport = await r.json();
+    renderReport(currentReport, pass, code);
+    showScreen('sReport');
+
+  }catch(err){
+    showErr(`Connection error: ${err.message}`);
+  }finally{
+    btn.textContent = 'Load Report';
+    btn.disabled = false;
+  }
+}
+
+function showErr(msg){
+  const e = el('loginErr');
+  e.textContent = msg;
+  e.style.display = 'block';
+  el('loadBtn').textContent = 'Load Report';
+  el('loadBtn').disabled = false;
+}
+
+/* ── RENDER REPORT ──────────────────────────────────── */
+function renderReport(r, pass, code){
+  // Header info
+  el('rName').textContent      = r.candidate_name || '—';
+  el('rEmail').textContent     = r.candidate_email || '—';
+  el('rPosition').textContent  = r.position || '—';
+  el('rCode').textContent      = r.completion_code || code;
+  el('rSubmitted').textContent = r.submitted_at
+    ? 'Submitted ' + new Date(r.submitted_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})
+    : '';
+
+  // Pick the rubric + question bank for this assessment type
+  const type = assessmentType(r);
+  RUBRIC = RUBRICS[type];
+
+  // Restore any saved reviewer data
+  const saveKey = `review_${r.completion_code || code}`;
+  const saved = JSON.parse(localStorage.getItem(saveKey)||'{}');
+  scores = saved.scores || {};
+  if(saved.rec)   el('recSelect').value = saved.rec;
+  if(saved.notes) el('reviewerNotes').value = saved.notes;
+
+  // Pre-populate from Claude's auto-scores if the reviewer hasn't saved yet
+  if(!saved.scores && r.scores) {
+    RUBRIC.forEach(item => {
+      const v = r.scores[item.score];
+      if(v) scores[item.key] = v;
+    });
+  }
+
+  // Build AI overall assessment
+  buildOverviewPanel(r);
+
+  // Build AI suspicion panel
+  buildSuspicionPanel(r);
+
+  // Build rubric
+  buildRubric(saveKey);
+
+  // Build response sections
+  buildSections(r);
+}
+
+/* Normalises old (responses{}) and new (question_reviews[]) report shapes */
+function getQuestionReviews(r){
+  const bank = (window.QUESTION_BANKS || {})[assessmentType(r)] || {};
+  if(Array.isArray(r.question_reviews) && r.question_reviews.length){
+    return r.question_reviews.map(q => {
+      const meta = bank[q.id] || STEPS.find(s => s.key === q.id) || {};
+      return {
+        id:         q.id,
+        label:      q.label    || meta.label || q.id,
+        phase:      meta.phase || 'Assessment',
+        question:   q.question || meta.question || '',
+        answer:     q.answer   || '',
+        score:      q.score,
+        assessment: q.assessment || '',
+      };
+    });
+  }
+  // legacy fallback
+  const res = r.responses || {};
+  return STEPS.map(s => ({
+    id: s.key, label: s.label, phase: s.phase,
+    question: '', answer: res[s.key] || '', score: null, assessment: '',
+  }));
+}
+
+function buildOverviewPanel(r){
+  const o    = r.overall || {};
+  const rec  = String(o.recommendation || '').toLowerCase();
+  const meta = REC_META[rec] || { label:'NOT ASSESSED', color:'#94a3b8', icon:'—' };
+
+  const list = (arr, color, empty) => {
+    if(!Array.isArray(arr) || !arr.length) return `<div style="font-size:13px;color:var(--dim);font-style:italic">${empty}</div>`;
+    return arr.map(x => `<div style="font-size:13px;line-height:1.6;padding:5px 0 5px 16px;position:relative;color:var(--text)">
+      <span style="position:absolute;left:0;color:${color}">▸</span>${escHtml(x)}</div>`).join('');
+  };
+
+  el('overviewPanel').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px">
+      <h3 style="font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0">AI Overall Assessment</h3>
+      <span style="font-size:15px;font-weight:800;padding:8px 20px;border-radius:24px;background:${meta.color}22;border:2px solid ${meta.color}77;color:${meta.color}">
+        ${meta.icon} ${meta.label}
+      </span>
+    </div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:18px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin-bottom:8px">Summary</div>
+      <div style="font-size:14px;line-height:1.75">${escHtml(o.summary || 'No overall summary was generated for this assessment.')}</div>
+      ${o.confidence ? `<div style="font-size:12px;color:var(--dim);margin-top:10px">Confidence in this recommendation: <strong style="color:var(--muted)">${escHtml(String(o.confidence).toUpperCase())}</strong></div>` : ''}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="ov-grid">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--success);border-radius:var(--rs);padding:16px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--success);margin-bottom:10px">Strengths</div>
+        ${list(o.strengths, 'var(--success)', 'None identified.')}
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--danger);border-radius:var(--rs);padding:16px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--danger);margin-bottom:10px">Weakest Areas</div>
+        ${list(o.weaknesses, 'var(--danger)', 'None identified.')}
+      </div>
+    </div>
+
+    ${Array.isArray(o.interview_focus) && o.interview_focus.length ? `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--rs);padding:16px;margin-top:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#93c5fd;margin-bottom:10px">Probe in Live Interview</div>
+      ${list(o.interview_focus, 'var(--accent)', '')}
+    </div>` : ''}`;
+}
+
+function buildSuspicionPanel(r){
+  const ai = r.ai_suspicion || {};
+  const level = String(ai.overall_suspicion || 'unknown').toLowerCase();
+  const paste = r.paste_count ?? 0;
+
+  const colors = { high:'#ef4444', medium:'#f59e0b', low:'#10b981', unknown:'#94a3b8' };
+  const color = colors[level] || colors.unknown;
+
+  const flagged = Array.isArray(ai.flagged_steps) && ai.flagged_steps.length
+    ? ai.flagged_steps.join(', ') : 'None';
+
+  const panel = el('suspicionPanel');
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+      <h3 style="font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0">AI-Use Detection</h3>
+      <span style="font-size:13px;font-weight:700;padding:5px 14px;border-radius:20px;background:${color}22;border:1px solid ${color}55;color:${color}">
+        ${level.toUpperCase()} SUSPICION
+      </span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin-bottom:6px">Flagged Steps</div>
+        <div style="font-size:14px;font-weight:600">${escHtml(flagged)}</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin-bottom:6px">Paste Events</div>
+        <div style="font-size:14px;font-weight:600${paste > 3 ? ';color:#f59e0b' : ''}">${paste} ${paste > 3 ? '⚠️' : ''}</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin-bottom:6px">Notes</div>
+        <div style="font-size:13px;color:var(--muted)">${escHtml(ai.notes || '—')}</div>
+      </div>
+    </div>`;
+}
+
+function buildRubric(saveKey){
+  const grid = el('rubricGrid');
+  grid.innerHTML = '';
+
+  RUBRIC.forEach(item => {
+    const score = scores[item.key] || 0;
+    const div = document.createElement('div');
+    div.className = 'rrow';
+    div.innerHTML = `
+      <div class="rrow-top">
+        <div>
+          <div class="rrow-name">${item.label}</div>
+          <div class="rrow-wt">${Math.round(item.weight*100)}% weight — ${item.desc}</div>
+        </div>
+        <div class="stars" id="stars_${item.key}">
+          ${[1,2,3,4,5].map(n=>`<div class="star${score>=n?' on':''}" data-key="${item.key}" data-val="${n}" onclick="setStar('${item.key}',${n},'${saveKey}')">★</div>`).join('')}
+        </div>
+      </div>
+      <div class="rrow-note">
+        <textarea placeholder="Notes on ${item.label.toLowerCase()}…" id="note_${item.key}" oninput="saveLocal('${saveKey}')">${scores['note_'+item.key]||''}</textarea>
+      </div>`;
+    grid.appendChild(div);
+  });
+
+  updateTotal();
+}
+
+function setStar(key, val, saveKey){
+  scores[key] = val;
+  const container = el('stars_'+key);
+  container.querySelectorAll('.star').forEach((s,i) => {
+    s.classList.toggle('on', i < val);
+  });
+  updateTotal();
+  saveLocal(saveKey);
+}
+
+function updateTotal(){
+  let weighted = 0, hasAny = false;
+  RUBRIC.forEach(item => {
+    if(scores[item.key]){
+      weighted += scores[item.key] * item.weight;
+      hasAny = true;
+    }
+  });
+  el('scoreTotal').textContent = hasAny ? weighted.toFixed(1) : '—';
+}
+
+function scoreColor(n){
+  if(n >= 4.5) return '#10b981';
+  if(n >= 3.5) return '#22c55e';
+  if(n >= 2.5) return '#f59e0b';
+  if(n >= 1)   return '#ef4444';
+  return '#64748b';
+}
+
+function buildSections(r){
+  const container = el('sections');
+  container.innerHTML = '';
+  let lastPhase = '';
+
+  const items = getQuestionReviews(r);
+
+  items.forEach((q, i) => {
+    const hasText  = q.answer && q.answer !== '[No response]' && q.answer.trim().length > 0;
+    const hasScore = typeof q.score === 'number' && q.score > 0;
+    const col      = scoreColor(q.score);
+
+    if(q.phase !== lastPhase){
+      lastPhase = q.phase;
+      const ph = document.createElement('div');
+      ph.style.cssText='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);padding:10px 4px 4px;';
+      ph.textContent = '— ' + q.phase + ' —';
+      container.appendChild(ph);
+    }
+
+    const sec = document.createElement('div');
+    sec.className = 'sec' + (i === 0 ? ' open' : '');
+    sec.innerHTML = `
+      <div class="sec-hdr" onclick="toggleSec(this.parentElement)">
+        <div class="sec-title">${escHtml(q.label)}</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${hasScore
+            ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:14px;background:${col}22;border:1px solid ${col}66;color:${col}">${q.score}/5</span>`
+            : `<span class="sec-tag">${hasText ? 'Answered' : 'No response'}</span>`}
+          <span class="chevron">▾</span>
+        </div>
+      </div>
+      <div class="sec-body">
+        ${q.question ? `
+        <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--rs);padding:14px 16px;margin-bottom:16px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#93c5fd;margin-bottom:7px">Question Asked</div>
+          <div style="font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap">${escHtml(q.question)}</div>
+        </div>` : ''}
+
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:7px">Candidate's Answer</div>
+        ${hasText
+          ? `<div class="response-text">${escHtml(q.answer)}</div>`
+          : `<div class="no-response">No response recorded for this section.</div>`}
+
+        ${q.assessment ? `
+        <div style="background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.2);border-radius:var(--rs);padding:14px 16px;margin-top:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#93c5fd">AI Assessment of This Answer</div>
+            ${hasScore ? `<span style="font-size:12px;font-weight:800;color:${col}">${q.score}/5</span>` : ''}
+          </div>
+          <div style="font-size:13px;line-height:1.7;color:var(--text)">${escHtml(q.assessment)}</div>
+        </div>` : ''}
+      </div>`;
+    container.appendChild(sec);
+  });
+}
+
+function toggleSec(sec){
+  sec.classList.toggle('open');
+}
+
+/* ── LOCAL SAVE ─────────────────────────────────────── */
+function saveLocal(saveKey){
+  if(!currentReport) return;
+  const key = saveKey || `review_${currentReport.completion_code}`;
+  const noteScores = {};
+  RUBRIC.forEach(item => {
+    noteScores['note_'+item.key] = (el('note_'+item.key)||{}).value || '';
+  });
+  const payload = {
+    scores: { ...scores, ...noteScores },
+    rec:    el('recSelect').value,
+    notes:  el('reviewerNotes').value,
+    savedAt: new Date().toISOString(),
+  };
+  try{ localStorage.setItem(key, JSON.stringify(payload)); }catch(_){}
+  const msg = el('savedMsg');
+  msg.classList.add('show');
+  setTimeout(()=>msg.classList.remove('show'), 2500);
+}
+
+/* ── COPY / DOWNLOAD ────────────────────────────────── */
+function copyReport(){
+  if(!currentReport) return;
+  const r = currentReport;
+  const o = r.overall || {};
+  const lines = [
+    `CANDIDATE ASSESSMENT SUMMARY`,
+    `==============================`,
+    `Candidate: ${r.candidate_name}`,
+    `Email:     ${r.candidate_email}`,
+    `Position:  ${r.position}`,
+    `Code:      ${r.completion_code}`,
+    `Submitted: ${r.submitted_at ? new Date(r.submitted_at).toLocaleString() : '—'}`,
+    ``,
+  ];
+  if(o.recommendation){
+    lines.push(`AI RECOMMENDATION: ${String(o.recommendation).toUpperCase().replace(/_/g,' ')}`);
+    if(o.summary) lines.push(o.summary);
+    if(Array.isArray(o.strengths)  && o.strengths.length)  lines.push('', 'STRENGTHS:',     ...o.strengths.map(s=>'  • '+s));
+    if(Array.isArray(o.weaknesses) && o.weaknesses.length) lines.push('', 'WEAKEST AREAS:', ...o.weaknesses.map(s=>'  • '+s));
+    lines.push('');
+  }
+  getQuestionReviews(r).forEach(q => {
+    lines.push(`─── ${q.label}${typeof q.score === 'number' && q.score > 0 ? `  [${q.score}/5]` : ''} ───`);
+    if(q.question)   lines.push(`Q: ${q.question}`, '');
+    lines.push(q.answer || '[No response]');
+    if(q.assessment) lines.push('', `AI assessment: ${q.assessment}`);
+    lines.push('');
+  });
+  let scored = '';
+  RUBRIC.forEach(item => {
+    if(scores[item.key]) scored += `  ${item.label}: ${scores[item.key]}/5\n`;
+  });
+  if(scored){ lines.push('SCORES'); lines.push(scored); }
+  if(el('recSelect').value) lines.push(`Recommendation: ${el('recSelect').value}`);
+  if(el('reviewerNotes').value){ lines.push(''); lines.push('REVIEWER NOTES'); lines.push(el('reviewerNotes').value); }
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>alert('Summary copied to clipboard.')).catch(()=>alert('Copy failed — please select and copy manually.'));
+}
+
+function downloadReport(){
+  if(!currentReport) return;
+  const key = `review_${currentReport.completion_code}`;
+  const saved = JSON.parse(localStorage.getItem(key)||'{}');
+  const out = {
+    ...currentReport,
+    reviewer_scores: scores,
+    reviewer_recommendation: el('recSelect').value,
+    reviewer_notes: el('reviewerNotes').value,
+    reviewed_at: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mbn-assessment-${currentReport.completion_code}.json`;
+  a.click();
+}
+
+/* ── HELPERS ────────────────────────────────────────── */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>{s.classList.remove('active');s.style.display='none';});
+  const s = el(id);
+  s.style.display = id === 'sLogin' ? 'block' : 'flex';
+  s.classList.add('active');
+}
+
+function newSearch(){
+  currentReport = null;
+  scores = {};
+  el('inCode').value = '';
+  el('loginErr').style.display = 'none';
+  showScreen('sLogin');
+}
+
+function escHtml(s){
+  return String(s||'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>
+

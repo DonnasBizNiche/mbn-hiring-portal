@@ -1,0 +1,14 @@
+name = "mbn-hiring-portal"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[assets]
+directory = "."
+binding = "ASSETS"
+
+# Secrets — set each with: wrangler secret put <NAME>
+#   ANTHROPIC_API_KEY     — Claude API key
+#   SUPABASE_URL          — e.g. https://vlanjprnlcvztskngocg.supabase.co
+#   SUPABASE_SERVICE_KEY  — service role key (Settings > API in Supabase dashboard)
+#   TEAMWORK_API_KEY      — Teamwork personal access token
+#   ADMIN_PASSCODE        — password shown on /review login screen

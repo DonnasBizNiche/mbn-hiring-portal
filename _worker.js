@@ -125,7 +125,7 @@ export default {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${env.TEAMWORK_API_KEY}`,
+            Authorization: `Basic ${btoa(env.TEAMWORK_API_KEY + ':xxx')}`,
           },
           body: JSON.stringify({
             data: {

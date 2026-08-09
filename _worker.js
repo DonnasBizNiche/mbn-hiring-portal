@@ -120,7 +120,7 @@ export default {
       ].filter(Boolean).join('\n');
 
       const twRes = await fetch(
-        'https://mybizniche.teamwork.com/projects/api/v3/tasklists/3346283/tasks.json',
+        'https://mybizniche.teamwork.com/tasklists/3346283/tasks.json',
         {
           method: 'POST',
           headers: {
@@ -128,8 +128,8 @@ export default {
             Authorization: `Basic ${btoa(env.TEAMWORK_API_KEY + ':xxx')}`,
           },
           body: JSON.stringify({
-            todo: {
-              name: taskName,
+            'todo-item': {
+              content: taskName,
               description,
             },
           }),

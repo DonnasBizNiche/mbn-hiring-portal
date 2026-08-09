@@ -98,13 +98,7 @@ export default {
       if (!supaRes.ok) {
         const err = await supaRes.text();
         console.error('Supabase save failed:', err);
-        return json({
-          error: 'Failed to save report',
-          detail: err,
-          status: supaRes.status,
-          url: `${env.SUPABASE_URL}/rest/v1/assessment_reports`,
-          keyPrefix: env.SUPABASE_SERVICE_KEY ? env.SUPABASE_SERVICE_KEY.slice(0, 20) + '...' : 'MISSING',
-        }, 500);
+        return json({ error: 'Failed to save report' }, 500);
       }
 
       // Create Teamwork task
@@ -135,10 +129,12 @@ export default {
           }),
         }
       );
-      const twText = await twRes.text();
-      const twOk = twRes.ok;
+      if (!twRes.ok) {
+        const twErr = await twRes.text();
+        console.warn('Teamwork task failed:', twErr);
+      }
 
-      return json({ ok: true, code, teamwork: twOk ? twText : `failed ${twRes.status}: ${twText}` });
+      return json({ ok: true, code });
     }
 
     // GET /api/report/:code — retrieve report for reviewer dashboard

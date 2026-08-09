@@ -98,7 +98,7 @@ export default {
       if (!supaRes.ok) {
         const err = await supaRes.text();
         console.error('Supabase save failed:', err);
-        return json({ error: 'Failed to save report', detail: err, status: supaRes.status }, 500);
+        return json({ error: 'Failed to save report' }, 500);
       }
 
       // Create Teamwork task
@@ -113,22 +113,26 @@ export default {
         `Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
       ].filter(Boolean).join('\n');
 
-      await fetch(
-        'https://mybizniche.teamwork.com/projects/api/v3/tasklists/3346283/tasks.json',
+      const twRes = await fetch(
+        'https://mybizniche.teamwork.com/tasklists/3346283/tasks.json',
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${env.TEAMWORK_API_KEY}`,
+            Authorization: `Basic ${btoa(env.TEAMWORK_API_KEY + ':xxx')}`,
           },
           body: JSON.stringify({
-            data: {
-              type: 'tasks',
-              attributes: { name: taskName, description },
+            'todo-item': {
+              content: taskName,
+              description,
             },
           }),
         }
-      ).catch(err => console.warn('Teamwork task failed:', err));
+      );
+      if (!twRes.ok) {
+        const twErr = await twRes.text();
+        console.warn('Teamwork task failed:', twErr);
+      }
 
       return json({ ok: true, code });
     }

@@ -119,7 +119,7 @@ export default {
         `Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
       ].filter(Boolean).join('\n');
 
-      await fetch(
+      const twRes = await fetch(
         'https://mybizniche.teamwork.com/projects/api/v3/tasklists/3346283/tasks.json',
         {
           method: 'POST',
@@ -134,9 +134,11 @@ export default {
             },
           }),
         }
-      ).catch(err => console.warn('Teamwork task failed:', err));
+      );
+      const twText = await twRes.text();
+      const twOk = twRes.ok;
 
-      return json({ ok: true, code });
+      return json({ ok: true, code, teamwork: twOk ? 'created' : `failed ${twRes.status}: ${twText}` });
     }
 
     // GET /api/report/:code — retrieve report for reviewer dashboard

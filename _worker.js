@@ -138,7 +138,7 @@ export default {
       const twText = await twRes.text();
       const twOk = twRes.ok;
 
-      return json({ ok: true, code, teamwork: twOk ? 'created' : `failed ${twRes.status}: ${twText}` });
+      return json({ ok: true, code, teamwork: twOk ? twText : `failed ${twRes.status}: ${twText}` });
     }
 
     // GET /api/report/:code — retrieve report for reviewer dashboard

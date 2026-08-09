@@ -128,9 +128,9 @@ export default {
             Authorization: `Basic ${btoa(env.TEAMWORK_API_KEY + ':xxx')}`,
           },
           body: JSON.stringify({
-            data: {
-              type: 'tasks',
-              attributes: { name: taskName, description },
+            todo: {
+              name: taskName,
+              description,
             },
           }),
         }

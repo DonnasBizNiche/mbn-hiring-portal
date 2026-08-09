@@ -161,7 +161,8 @@
           </div>
           <div class="rhead-actions">
             <button class="btn btn-sm btn-sec" onclick="copyReport()">Copy Summary</button>
-            <button class="btn btn-sm btn-sec" onclick="downloadReport()">Download JSON</button>
+            <button class="btn btn-sm btn-sec" onclick="downloadReport()">Download Report</button>
+            <button class="btn btn-sm btn-sec" onclick="window.print()">Print / Save PDF</button>
             <button class="btn btn-sm btn-sec" onclick="newSearch()">← New Search</button>
           </div>
         </div>
@@ -659,20 +660,57 @@ function copyReport(){
 
 function downloadReport(){
   if(!currentReport) return;
-  const key = `review_${currentReport.completion_code}`;
-  const saved = JSON.parse(localStorage.getItem(key)||'{}');
-  const out = {
-    ...currentReport,
-    reviewer_scores: scores,
-    reviewer_recommendation: el('recSelect').value,
-    reviewer_notes: el('reviewerNotes').value,
-    reviewed_at: new Date().toISOString(),
-  };
-  const blob = new Blob([JSON.stringify(out, null, 2)], {type:'application/json'});
+  const r = currentReport;
+  const o = r.overall || {};
+  const lines = [
+    'MBN CANDIDATE ASSESSMENT REPORT',
+    '='.repeat(60),
+    `Candidate:       ${r.candidate_name}`,
+    `Email:           ${r.candidate_email || '—'}`,
+    `Position:        ${r.position || '—'}`,
+    `Assessment Type: ${r.assessment_type || '—'}`,
+    `Completion Code: ${r.completion_code}`,
+    `Submitted:       ${r.submitted_at ? new Date(r.submitted_at).toLocaleString() : '—'}`,
+    `Downloaded:      ${new Date().toLocaleString()}`,
+    '',
+    '='.repeat(60),
+    'AI ASSESSMENT SUMMARY',
+    '='.repeat(60),
+  ];
+  if(o.recommendation) lines.push(`Recommendation: ${String(o.recommendation).toUpperCase().replace(/_/g,' ')}`);
+  if(typeof r.overall_score === 'number') lines.push(`Overall Score: ${r.overall_score}%`);
+  if(o.summary){ lines.push('', o.summary); }
+  if(Array.isArray(o.strengths)  && o.strengths.length)       lines.push('', 'STRENGTHS:', ...o.strengths.map(s=>'  • '+s));
+  if(Array.isArray(o.weaknesses) && o.weaknesses.length)      lines.push('', 'AREAS OF CONCERN:', ...o.weaknesses.map(s=>'  • '+s));
+  if(Array.isArray(o.interview_focus) && o.interview_focus.length) lines.push('', 'RECOMMENDED INTERVIEW FOCUS:', ...o.interview_focus.map(s=>'  • '+s));
+
+  if(r.scores && Object.keys(r.scores).length){
+    lines.push('', '='.repeat(60), 'DIMENSION SCORES', '='.repeat(60));
+    Object.entries(r.scores).forEach(([k,v]) => lines.push(`  ${k.replace(/_/g,' ')}: ${v}`));
+  }
+
+  lines.push('', '='.repeat(60), 'QUESTION-BY-QUESTION REVIEW', '='.repeat(60));
+  getQuestionReviews(r).forEach(q => {
+    lines.push('', `─── ${q.label}${typeof q.score === 'number' && q.score > 0 ? `  [Score: ${q.score}]` : ''} ───`);
+    if(q.question) lines.push(`Q: ${q.question}`, '');
+    lines.push(`A: ${q.answer || '[No response]'}`);
+    if(q.assessment) lines.push('', `AI Assessment: ${q.assessment}`);
+  });
+
+  const revRec = el('recSelect').value;
+  const revNotes = el('reviewerNotes').value;
+  if(revRec || revNotes){
+    lines.push('', '='.repeat(60), 'REVIEWER NOTES', '='.repeat(60));
+    if(revRec) lines.push(`Recommendation: ${revRec}`);
+    if(revNotes) lines.push('', revNotes);
+  }
+
+  const blob = new Blob([lines.join('\n')], {type:'text/plain;charset=utf-8'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `mbn-assessment-${currentReport.completion_code}.json`;
+  a.download = `MBN_Assessment_${r.candidate_name.replace(/\s+/g,'_')}_${r.completion_code}.txt`;
   a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 /* ── HELPERS ────────────────────────────────────────── */

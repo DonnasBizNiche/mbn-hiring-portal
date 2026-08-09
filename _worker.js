@@ -98,7 +98,7 @@ export default {
       if (!supaRes.ok) {
         const err = await supaRes.text();
         console.error('Supabase save failed:', err);
-        return json({ error: 'Failed to save report' }, 500);
+        return json({ error: 'Failed to save report', detail: err, status: supaRes.status }, 500);
       }
 
       // Create Teamwork task

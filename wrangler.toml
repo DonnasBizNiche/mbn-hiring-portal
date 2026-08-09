@@ -1,14 +1,9 @@
 name = "mbn-hiring-portal"
-main = "worker.js"
 compatibility_date = "2024-01-01"
-pages_build_output_dir = "."
 
-[assets]
-directory = "."
-
-# Secrets — set each with: wrangler secret put <NAME>
+# Secrets — set in Cloudflare Pages dashboard > Settings > Environment Variables
 #   ANTHROPIC_API_KEY     — Claude API key
-#   SUPABASE_URL          — e.g. https://vlanjprnlcvztskngocg.supabase.co
-#   SUPABASE_SERVICE_KEY  — service role key (Settings > API in Supabase dashboard)
+#   SUPABASE_URL          — https://vlanjprnlcvztskngocg.supabase.co
+#   SUPABASE_SERVICE_KEY  — service role key (Supabase Settings > API)
 #   TEAMWORK_API_KEY      — Teamwork personal access token
-#   ADMIN_PASSCODE        — password shown on /review login screen
+#   ADMIN_PASSCODE        — password for the /review dashboard

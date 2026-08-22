@@ -543,7 +543,21 @@ function buildSections(r){
   container.innerHTML = '';
   let lastPhase = '';
 
-  const items = getQuestionReviews(r);
+  if(r.report_incomplete || r.report_truncated){
+    const note = document.createElement('div');
+    note.style.cssText = 'background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:var(--rs);padding:14px 16px;margin-bottom:16px;font-size:13px;line-height:1.7;color:var(--text)';
+    note.innerHTML = r.report_incomplete
+      ? '<strong>AI summary unavailable.</strong> The candidate finished, but the automated report could not be generated. Their full transcript is below.'
+      : '<strong>Partial AI summary.</strong> The report was cut short — everything it did produce is below, and the full transcript is stored with this record.';
+    container.appendChild(note);
+  }
+
+  const items = getQuestionReviews(r).filter(q => (q.answer || '').trim() || q.assessment);
+
+  if(!items.length){
+    buildTranscript(r, container);
+    return;
+  }
 
   items.forEach((q, i) => {
     const hasText  = q.answer && q.answer !== '[No response]' && q.answer.trim().length > 0;
@@ -592,6 +606,33 @@ function buildSections(r){
         </div>` : ''}
       </div>`;
     container.appendChild(sec);
+  });
+}
+
+/* Raw conversation, shown when there is no usable question-by-question report */
+function buildTranscript(r, container){
+  const turns = Array.isArray(r.transcript) ? r.transcript : [];
+  if(!turns.length){
+    const empty = document.createElement('div');
+    empty.className = 'no-response';
+    empty.textContent = 'No responses or transcript were stored with this submission.';
+    container.appendChild(empty);
+    return;
+  }
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);padding:10px 4px 4px;';
+  hdr.textContent = '— Full Transcript —';
+  container.appendChild(hdr);
+
+  turns.forEach(t => {
+    const isAi = t.role === 'assistant';
+    const row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:14px;padding:14px 16px;border-radius:var(--rs);border:1px solid var(--border);border-left:3px solid ' + (isAi ? 'var(--accent)' : '#22c55e') + ';background:var(--surface2)';
+    row.innerHTML =
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:7px">' +
+      (isAi ? 'Interviewer' : 'Candidate') + '</div>' +
+      '<div style="font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap">' + escHtml(t.content) + '</div>';
+    container.appendChild(row);
   });
 }
 
@@ -689,8 +730,13 @@ function downloadReport(){
     Object.entries(r.scores).forEach(([k,v]) => lines.push(`  ${k.replace(/_/g,' ')}: ${v}`));
   }
 
+  const reviews = getQuestionReviews(r).filter(q => (q.answer || '').trim() || q.assessment);
+  if(!reviews.length && Array.isArray(r.transcript) && r.transcript.length){
+    lines.push('', '='.repeat(60), 'FULL TRANSCRIPT', '='.repeat(60));
+    r.transcript.forEach(t => lines.push('', (t.role === 'assistant' ? 'INTERVIEWER:' : 'CANDIDATE:'), t.content));
+  }
   lines.push('', '='.repeat(60), 'QUESTION-BY-QUESTION REVIEW', '='.repeat(60));
-  getQuestionReviews(r).forEach(q => {
+  reviews.forEach(q => {
     lines.push('', `─── ${q.label}${typeof q.score === 'number' && q.score > 0 ? `  [Score: ${q.score}]` : ''} ───`);
     if(q.question) lines.push(`Q: ${q.question}`, '');
     lines.push(`A: ${q.answer || '[No response]'}`);

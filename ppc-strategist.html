@@ -689,7 +689,7 @@ async function ai(){
     S.messages.push({role:'assistant',content:raw});
     typing(false);
 
-    if(raw.includes('<<<REPORT_START>>>')){
+    if(hasReport(raw)){
       const vis = raw.split('<<<REPORT_START>>>')[0].trim();
       if(vis) addMsg('ai',vis);
       S.report = parseReport(raw);
@@ -846,6 +846,16 @@ function setPhase(n){
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   el(id).classList.add('active');
+}
+
+/* True when the reply is the closing report. The marker must end its line, which is
+   how the report is always emitted. That distinguishes it from the interviewer merely
+   mentioning the marker mid-sentence, without rejecting a report whose body came back
+   malformed — those still need to finish and submit, falling back to the transcript. */
+function hasReport(raw){
+  const i = raw.indexOf('<<<REPORT_START>>>');
+  if(i === -1) return false;
+  return /^[ \t]*(\r?\n|$)/.test(raw.slice(i + '<<<REPORT_START>>>'.length));
 }
 
 /* ── REPORT RECOVERY ───────────────────────────────────

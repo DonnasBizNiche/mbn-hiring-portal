@@ -23,7 +23,7 @@ A Cloudflare Pages app that runs AI-driven conversational assessments for candid
 | Role | File | Duration | Questions | Phases |
 |---|---|---|---|---|
 | Technical SEO Specialist | `technical-seo.html` | 45–60 min | 14 | 7 |
-| Senior SEO Strategist | `seo-strategist.html` | 90 min | 24 | 9 |
+| Senior SEO Strategist | `seo-strategist.html` | 25–30 min | 10 | 4 |
 | Paid Media Strategist | `ppc-strategist.html` | 90 min | 24 | 9 |
 
 **To add a new assessment:**
@@ -161,6 +161,26 @@ wrangler pages deploy . --project-name employment-skills-assessment --branch mai
       `<<<REPORT_START>>>`, so a half-arrived marker never flashes on screen.
   Claude API errors are now unwrapped into `{ error: { message } }` as well —
   "Error 500" told nobody anything, including us.
+- August 2026: the Senior SEO Strategist assessment was cut from 24 questions to
+  10 and from 90 minutes to about 25. The old version examined specialist
+  execution — faceted-nav indexation across 4,500 SKUs, dead-SKU handling,
+  listings management at scale, a 12-month revenue forecast with attribution
+  methodology, plus a keyword-mapping table and a data-reading exercise. That is
+  a senior audit, not a first-round screen, and it wasn't measuring the thing we
+  hire for. The assessment is now one arc — take over the account, diagnose it,
+  plan the first 90 days, run the client relationship — and the interviewer is
+  explicitly told not to ask for forecasts, keyword tables, or audits.
+  The reference material (keyword table, GBP profile, analytics tables) is gone;
+  only the client brief remains. Competency rollups changed to match:
+  `keyword_mapping`, `channel_strategy` and `measurement_forecasting` were
+  replaced by `account_takeover`, `prioritization` and `practical_judgment`.
+  `revenue_orientation` and `stakeholder_influence` were deliberately left
+  alone — `review.html` identifies an SEO strategist report by the presence of
+  `revenue_orientation`, so renaming it would orphan every earlier report.
+  For the same reason the retired `q1_`–`q24_` question ids are still in
+  `questions.js` under the new `s1_`–`s10_` set: `/review` looks question text
+  up by id, so deleting them would blank out every assessment taken before the
+  rewrite. Don't use them for anything new.
 - The duplicate `worker.js` was deleted at the same time — Pages only ever ran
   `_worker.js`, so edits to the copy silently did nothing.
 - Also August 2026: candidate cards never showed on the Teamwork board. Creating a

@@ -20,11 +20,11 @@ A Cloudflare Pages app that runs AI-driven conversational assessments for candid
 
 ## Assessments
 
-| Role | File | Duration | Questions | Phases |
-|---|---|---|---|---|
+| Role | File | Duration | Questions | Phases | Notes |
+|---|---|---|---|---|---|
 | Technical SEO Specialist | `technical-seo.html` | 45–60 min | 14 | 7 |
 | Senior SEO Strategist | `seo-strategist.html` | 25–30 min | 10 | 4 |
-| Paid Media Strategist | `ppc-strategist.html` | 90 min | 24 | 9 |
+| ~~Paid Media Strategist~~ | `ppc-strategist.html` | — | — | — | **Retired** Aug 2026 — hidden from the landing page (`status: 'retired'` in `assessments.js`). Files intact; set back to `'live'` to restore. Still reachable at `/ppc-strategist` by direct link. |
 
 **To add a new assessment:**
 1. Copy an existing assessment `.html` file

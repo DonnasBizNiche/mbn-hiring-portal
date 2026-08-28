@@ -55,6 +55,15 @@ window.ASSESSMENT_CATALOG = [
     accent:     '#8b5cf6',
   },
 
+  /* Retired August 2026 — MBN is not hiring for this role, so the assessment
+     should not be offered. 'retired' hides it from the landing page entirely
+     (index.html filters on it), and the Paid Media department heading goes with
+     it since headings are derived from the visible catalog.
+
+     Nothing was deleted: ppc-strategist.html and its question bank are intact,
+     so putting this back to 'live' is the whole job if the role reopens. Note
+     the page is still served at /ppc-strategist for anyone with a direct link —
+     hiding the card doesn't take the URL down. */
   {
     id:         'ppc_strategist',
     title:      'Paid Media Strategist',
@@ -64,7 +73,7 @@ window.ASSESSMENT_CATALOG = [
     questions:  24,
     phases:     9,
     blurb:      'A single Google Ads account worked end to end — profitability math, campaign diagnostics, search terms, conversion tracking, Shopping and Performance Max, bidding, and Local Services Ads. A calculator is useful. Your progress saves automatically.',
-    status:     'live',
+    status:     'retired',
     accent:     '#f59e0b',
   },
 

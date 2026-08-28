@@ -232,12 +232,16 @@ const RUBRICS = {
     { key:'communication', label:'Communication',        weight:.15, score:'communication',        desc:'Translates findings for non-technical stakeholders without jargon' },
     { key:'selfawareness', label:'Self-Awareness',       weight:.15, score:'self_awareness',       desc:'Honest about gaps; articulates how they manage limitations' },
   ],
+  /* Rewritten with the 10-question assessment. revenue_orientation and
+     stakeholder_influence are deliberately unchanged: they still apply, and
+     assessmentType() below identifies an seo_strategist report by the presence
+     of revenue_orientation, so pre-rewrite reports keep resolving correctly. */
   seo_strategist: [
-    { key:'revenue',     label:'Revenue Orientation',   weight:.30, score:'revenue_orientation',     desc:'Ties every recommendation to margin, LTV, and conversion — not sessions' },
-    { key:'mapping',     label:'Keyword → Intent → Page', weight:.20, score:'keyword_mapping',       desc:'Reads intent correctly, assigns the right page type, knows when NOT to target' },
-    { key:'channel',     label:'Channel Strategy',      weight:.20, score:'channel_strategy',        desc:'Real depth across e-commerce, local, GBP/reputation, and national' },
-    { key:'measurement', label:'Measurement & Forecasting', weight:.15, score:'measurement_forecasting', desc:'Reads data accurately; builds defensible forecasts; proves attribution' },
-    { key:'influence',   label:'Stakeholder Influence', weight:.15, score:'stakeholder_influence',   desc:'Pushes back on vanity requests; communicates to non-technical executives' },
+    { key:'revenue',    label:'Revenue Orientation',  weight:.25, score:'revenue_orientation',  desc:'Ties recommendations to margin and revenue rather than sessions and rankings' },
+    { key:'takeover',   label:'Account Takeover',     weight:.20, score:'account_takeover',     desc:'Gets oriented before acting — what they learn, ask, and verify before changing anything' },
+    { key:'priority',   label:'Prioritization',       weight:.20, score:'prioritization',       desc:'Sequences the first 90 days sensibly and will say what NOT to work on' },
+    { key:'influence',  label:'Stakeholder Influence', weight:.20, score:'stakeholder_influence', desc:'Pushes back on vanity requests; communicates to a skeptical, non-technical owner' },
+    { key:'judgment',   label:'Practical Judgment',   weight:.15, score:'practical_judgment',   desc:'Reads like someone who has actually run accounts, not recited a process' },
   ],
   ppc_strategist: [
     { key:'profitability', label:'Profitability Math',     weight:.30, score:'profitability_math',     desc:'Derives targets from margin; reads ROAS against breakeven, not in isolation' },

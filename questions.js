@@ -8,8 +8,70 @@
  */
 window.QUESTION_BANKS = {
 
-  /* ——————————— SENIOR SEO STRATEGIST — 24 questions, 9 phases ——————————— */
+  /* ——————————— SENIOR SEO STRATEGIST — 10 questions, 4 phases ———————————
+     Rewritten August 2026 as a first-round screen. The old 24-question version
+     examined specialist execution — faceted-nav indexation, dead SKUs, listings
+     at scale, a 12-month revenue forecast. What we actually need to know is how
+     someone would take over a live account and run strategy on it, so the whole
+     assessment is now that arc: orient, diagnose, plan, run the relationship.
+
+     The q*_ ids below the new ones are the retired 24-question set. They are
+     kept because reports already in Supabase reference them, and /review looks
+     question text up by id — delete them and every assessment taken before the
+     rewrite loses its questions. Nothing new should use them. */
   seo_strategist: {
+    s1_background: {
+      label: '1. Background & Experience',
+      phase: 'Orientation',
+      question: "Tell me about your strategy experience — how many years, what kinds of clients, and what size accounts you've owned end to end.",
+    },
+    s2_defining_success: {
+      label: '2. Defining Success',
+      phase: 'Orientation',
+      question: 'Before I show you any client details: when you take over an SEO account, how do you define success? What do you report on, and what do you refuse to report on?',
+    },
+    s3_first_30_days: {
+      label: '3. The First 30 Days',
+      phase: 'Taking Over the Account',
+      question: "You've just taken over this account. What do you do in your first 30 days, before you change anything on the site? Walk me through it.",
+    },
+    s4_discovery: {
+      label: '4. Discovery',
+      phase: 'Taking Over the Account',
+      question: "What do you still need to know that isn't in that brief? Give me the questions you'd ask on the kickoff call, and tell me what you'd do differently depending on the answers.",
+    },
+    s5_reading_situation: {
+      label: '5. Reading the Situation',
+      phase: 'Taking Over the Account',
+      question: 'Organic sessions are up 61% year over year, and organic revenue is flat at +2%. What do you think has been happening, and how would you check whether you\'re right?',
+    },
+    s6_where_to_focus: {
+      label: '6. Where You\'d Focus',
+      phase: 'Building the Plan',
+      question: 'Northline has a national e-commerce side, eight local markets with service departments, and a parts business. In your first six months, where would you put the effort — and what would you leave alone or tell them not to spend on?',
+    },
+    s7_ninety_day_plan: {
+      label: '7. The 90-Day Plan',
+      phase: 'Building the Plan',
+      question: 'Give me your first 90 days as a plan. What actually happens, in what order, and why that order?',
+    },
+    s8_handling_client: {
+      label: '8. Handling the Client',
+      phase: 'Building the Plan',
+      question: "Three weeks in, the owner tells you he wants Northline ranking on page one for 'generator' within six months, because someone told him that's the big keyword. How do you handle that conversation?",
+    },
+    s9_running_account: {
+      label: '9. Running the Account',
+      phase: 'Running the Account',
+      question: 'Once the plan is live, how do you run this account month to month — how often do you talk to the client, and what\'s in front of them when you do? Then write the opening of your first quarterly review for the owner: not technical, skeptical of SEO after the last agency showed him traffic charts while revenue stayed flat, ten minutes. Four to six sentences.',
+    },
+    s10_self_assessment: {
+      label: '10. Self-Assessment',
+      phase: 'Running the Account',
+      question: "What's your weakest area as a strategist, and how do you handle accounts where that gap matters?",
+    },
+
+    /* —— retired 24-question set — kept so pre-rewrite reports still render —— */
     q1_background: {
       label: '1. Background & Experience',
       phase: 'Orientation & Philosophy',

@@ -77,7 +77,7 @@ wrangler.toml         Cloudflare deployment config
 |---|---|---|
 | Cloudflare Pages | Hosting + Worker | Project: `employment-skills-assessment` |
 | GitHub | Source of truth | `DonnasBizNiche/mbn-hiring-portal` |
-| Supabase | Store assessment reports | Project `vlanjprnlcvztskngocg` (MBN Reporting Command Center), table: `assessment_reports` |
+| Supabase | Store assessment reports | Table `assessment_reports`. **Which project is not documented here — read `SUPABASE_URL` in Cloudflare.** It is NOT `vlanjprnlcvztskngocg`; see the warning below. |
 | Teamwork | Candidate task cards | Project 758831 ("Donna's Workspace - Internal"), tasklist 3346283, workflow 82559, stage 474512 ("Completed Skills Assessment" board column) |
 | Anthropic | Claude powers the interviews | claude-opus-4-5, `max_tokens` 32000, streamed |
 
@@ -91,7 +91,7 @@ Set in Cloudflare Pages → Settings → Environment Variables. All marked **Sec
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API key |
 | `CLAUDE_MODEL` | Optional — model the interviews run on (default `claude-opus-4-5`). Set this to move to a newer model without a deploy. |
-| `SUPABASE_URL` | `https://vlanjprnlcvztskngocg.supabase.co` |
+| `SUPABASE_URL` | The Supabase project reports are written to. Whatever is set in Cloudflare is the truth — do not assume the value from any note in this repo. |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (Settings → API in Supabase dashboard) |
 | `TEAMWORK_API_KEY` | Teamwork personal access token |
 | `TEAMWORK_TASKLIST_ID` | Optional — tasklist the card is created in (default 3346283) |
@@ -120,8 +120,20 @@ submission, plus `report_incomplete: true` (no AI summary could be parsed) or
 `report_truncated: true` (only part of it parsed). The review page shows the transcript
 whenever the per-question report is missing, so a submission is never unrecoverable.
 
-> The `assessments` table in the same Supabase project is for the **staff SEO skills test**
-> (separate tool at `mbn-assessment/` on Desktop / `skills_assessment` GitHub repo) — not this portal.
+> **Don't trust a project id written down here — check `SUPABASE_URL` in Cloudflare.**
+> This README used to name `vlanjprnlcvztskngocg` ("MBN Reporting Command Center") as the
+> store. In August 2026 that was checked directly and it is wrong twice over: that project
+> is actually called "SEO Command Center", and its `assessment_reports` table has never
+> received a single row — `pg_stat_user_tables.n_tup_ins` is 0. Meanwhile a live submission
+> returned success, which the worker only does after Supabase accepts the insert. So the
+> portal writes to a project that is not that one and is not in the same Supabase account.
+> Half a debugging session went into an empty table because of that line. If you need to
+> query the reports directly, get the real project from the Cloudflare environment variable
+> first.
+>
+> A separate `assessments` table exists in `vlanjprnlcvztskngocg` for the **staff SEO skills
+> test** (different tool: `mbn-assessment/` on Desktop, `skills_assessment` GitHub repo).
+> It has nothing to do with this portal — another easy way to end up in the wrong place.
 
 ---
 
@@ -136,6 +148,25 @@ wrangler pages deploy . --project-name employment-skills-assessment --branch mai
 ```
 
 > Warning: omitting `--branch main` sends the deploy to a **Preview URL**, not production.
+
+---
+
+## Checking whether a submission actually worked
+
+In order, cheapest first:
+
+1. **The Teamwork board.** A finished assessment becomes a card in the "Completed Skills
+   Assessment" column. If it's there, everything worked.
+2. **`/review` with the completion code.** Reads back through the worker, so it proves the
+   Supabase write landed without needing to know which project that is.
+3. **`report_json.teamwork` on the row.** Records the HTTP status and error body of *both*
+   Teamwork calls — creating the task and filing it into the column — so a card that exists
+   but never made it onto the board is distinguishable from one that was never created.
+
+To generate a submission without sitting an interview, run `tools/test-submission.js`.
+To test the interview itself, run `tools/test-interview.js` — but note it defaults to
+`SUBMIT = false`, so a completely successful run leaves Supabase and the Teamwork board
+empty. That is not a broken integration; it is the script doing what it was told.
 
 ---
 

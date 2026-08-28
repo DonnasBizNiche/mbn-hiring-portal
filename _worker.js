@@ -121,9 +121,22 @@ async function createTeamworkTask(env, { code, candidateName, assessmentType, sc
     const body = await res.text();
     if (!res.ok) return { ok: false, tasklist_id: tasklistId, status: res.status, error: body.slice(0, 300) };
 
+    /* v1 has returned the new id under both `id` and `taskId` depending on the
+       version. Missing it isn't cosmetic: with no id the stage move below never
+       runs, so the card exists but sits in no board column — invisible on the
+       board, which reads as "the assessment never arrived". Accept either, and
+       keep the raw body when neither is there so the next person can see why. */
     let taskId = null;
-    try { taskId = JSON.parse(body).id || null; } catch (_) {}
-    if (!taskId) return { ok: true, tasklist_id: tasklistId, task_id: null, stage: { ok: false, error: 'No task id returned' } };
+    try {
+      const parsed = JSON.parse(body);
+      taskId = parsed.id || parsed.taskId || parsed.taskID || null;
+    } catch (_) {}
+    if (!taskId) {
+      return {
+        ok: true, tasklist_id: tasklistId, task_id: null,
+        stage: { ok: false, error: 'No task id returned', body: body.slice(0, 300) },
+      };
+    }
 
     const stage = await moveTaskToStage(env, taskId);
     return { ok: true, tasklist_id: tasklistId, task_id: taskId, stage };

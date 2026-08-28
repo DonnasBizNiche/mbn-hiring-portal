@@ -69,7 +69,15 @@
   const log  = (msg, style = '') => console.log('%c' + msg, style || 'color:#64748b');
 
   log(`Starting scripted interview as ${CANDIDATE.name}`, 'color:#8b5cf6;font-weight:bold');
-  log(`Submit at the end: ${SUBMIT ? 'YES — will write to Supabase and Teamwork' : 'no'}`);
+  if (SUBMIT) {
+    log('SUBMIT is on — this run WILL create a Supabase row and a Teamwork card.',
+      'color:#d97706;font-weight:bold');
+  } else {
+    console.warn('%cSUBMIT is off — this run will NOT create a Supabase row or a Teamwork card.\n' +
+      'It only tests /api/chat. To test the whole pipeline through to the Teamwork board, ' +
+      'set SUBMIT = true at the top of this script, or run tools/test-submission.js instead.',
+      'color:#d97706;font-weight:bold');
+  }
 
   const messages = [
     { role: 'system', content: sysPrompt(CANDIDATE.name, CANDIDATE.email) },
@@ -161,8 +169,10 @@
   }
 
   if (!SUBMIT) {
-    console.log('%cNot submitted. Set SUBMIT = true at the top of this script to file it end to end.',
-      'color:#64748b');
+    console.warn('%cNOT SUBMITTED — no Supabase row and no Teamwork card were created, because ' +
+      'SUBMIT is false at the top of this script.\nThat is why a successful run here can still leave ' +
+      'the Teamwork board empty. Set SUBMIT = true to file it end to end.',
+      'color:#d97706;font-weight:bold');
     window.__testReport = report;
     console.log('Report object left on window.__testReport if you want to inspect it.');
     return;

@@ -40,7 +40,13 @@ A Cloudflare Pages app that runs AI-driven conversational assessments for candid
 tools/                Developer utilities (not deployed as part of the app)
   test-submission.js  Paste into the browser console on the live site to file a
                       complete fake submission — checks Supabase, /review and the
-                      Teamwork board without sitting through a 90-minute interview
+                      Teamwork board without sitting through the interview
+  test-interview.js   Paste into the console ON an assessment page to play a
+                      scripted candidate through the whole interview against the
+                      live /api/chat. The only way to exercise the closing report
+                      turn, which is where this portal has broken twice and which
+                      test-submission.js can't reach. Drives the page's own
+                      streamChat/parseReport, so it tests the real code path
 index.html            Landing page — lists all live assessments (built from assessments.js)
 assessments.js        Single source of truth for assessment catalog
 questions.js          Question bank for all assessments

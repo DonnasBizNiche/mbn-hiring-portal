@@ -676,22 +676,91 @@ async function send(){
   await ai();
 }
 
+/* ── CHAT TRANSPORT ────────────────────────────────────
+   The closing turn is a ~14k-token JSON report, which takes minutes to generate.
+   Requested unstreamed, that turn sits silent on the wire long enough to be
+   dropped in transit, and the candidate loses a finished assessment to
+   "Connection error" on the very last message. Streaming keeps bytes moving, so
+   the turn survives however long it takes. onText fires with the text so far. */
+async function streamChat(messages, onText){
+  const r = await fetch('/api/chat',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({messages}),
+  });
+
+  if(!r.ok || !r.body){
+    let d = {};
+    try{ d = await r.json(); }catch(_){}
+    const m = (d && d.error && d.error.message)
+           || (typeof (d && d.error) === 'string' ? d.error : '')
+           || `Error ${r.status}`;
+    throw new Error(m);
+  }
+
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', text = '';
+
+  while(true){
+    const {value, done} = await reader.read();
+    if(done) break;
+    buf += dec.decode(value,{stream:true});
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for(const line of lines){
+      if(!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if(!payload || payload === '[DONE]') continue;
+      let ev;
+      try{ ev = JSON.parse(payload); }catch(_){ continue; }
+      if(ev.type === 'error') throw new Error((ev.error && ev.error.message) || 'Stream error');
+      if(ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta'){
+        text += ev.delta.text;
+        onText(text);
+      }
+    }
+  }
+
+  if(!text.trim()) throw new Error('The interviewer returned an empty reply');
+  return text;
+}
+
+/* The part of a partially-streamed reply that is safe to show the candidate:
+   everything before the report marker, and nothing that might be its beginning. */
+function visiblePart(t){
+  const MARK = '<<<REPORT_START>>>';
+  const i = t.indexOf(MARK);
+  if(i !== -1) return t.slice(0, i);
+  for(let n = Math.min(MARK.length - 1, t.length); n > 0; n--){
+    if(t.endsWith(MARK.slice(0, n))) return t.slice(0, t.length - n);
+  }
+  return t;
+}
+
 async function ai(){
   lock(true); typing(true);
+  let bub = null;
+  /* Render the reply as it streams in, but never show the hidden report. A split
+     on the marker is not enough mid-stream: the marker arrives a few characters
+     at a time, so "<<<REPO" would flash on screen before it is whole. Hold back
+     any tail that could still be the marker starting to arrive. */
+  const paint = live => {
+    const vis = visiblePart(live);
+    if(!vis.trim()) return;
+    if(!bub){ typing(false); bub = addMsg('ai',''); }
+    bub.innerHTML = fmt(vis);
+    el('msgs').scrollTop = el('msgs').scrollHeight;
+  };
+
   try{
-    const r = await fetch('/api/chat',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({messages:S.messages}),
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error?.message||`Error ${r.status}`);
-    const raw = d.content[0].text;
+    const raw = await streamChat(S.messages, paint);
     S.messages.push({role:'assistant',content:raw});
     typing(false);
 
     if(hasReport(raw)){
       const vis = raw.split('<<<REPORT_START>>>')[0].trim();
-      if(vis) addMsg('ai',vis);
+      if(vis){ if(bub) bub.innerHTML = fmt(vis); else addMsg('ai',vis); }
       S.report = parseReport(raw);
       S.code   = (S.report && S.report.completion_code) || genCode();
       if(S.report) S.report.completion_code = S.code;
@@ -700,7 +769,8 @@ async function ai(){
       el('progFill').style.width='100%';
       setTimeout(complete, 1800);
     } else {
-      addMsg('ai',raw); saveProgress(); lock(false); el('uInp').focus();
+      if(bub) bub.innerHTML = fmt(raw); else addMsg('ai',raw);
+      saveProgress(); lock(false); el('uInp').focus();
     }
   }catch(err){
     typing(false);
@@ -786,6 +856,7 @@ function addMsg(role,text){
   b.innerHTML=fmt(text);
   w.appendChild(av); w.appendChild(b); area.appendChild(w);
   area.scrollTop=area.scrollHeight;
+  return b;   // streaming replies rewrite this bubble as text arrives
 }
 
 function fmt(t){

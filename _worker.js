@@ -9,6 +9,7 @@
  *
  * Secrets (set via: wrangler secret put <NAME>):
  *   ANTHROPIC_API_KEY
+ *   CLAUDE_MODEL           (optional — overrides DEFAULT_MODEL below)
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY   (service role key — needed to bypass RLS for reads)
  *   TEAMWORK_API_KEY
@@ -18,7 +19,9 @@
  *   ADMIN_PASSCODE         (shown on review page login)
  */
 
-const MODEL = 'claude-opus-4-5';
+/* Overridable without a deploy: set CLAUDE_MODEL in Cloudflare to move the
+   interviews onto a newer model when this one is retired. */
+const DEFAULT_MODEL = 'claude-opus-4-5';
 
 /**
  * The closing turn of an assessment is a full JSON report that echoes back every
@@ -26,8 +29,14 @@ const MODEL = 'claude-opus-4-5';
  * assessments that runs well past 4k tokens — and a report cut off mid-JSON is a
  * lost submission, because the page can't parse it and nothing reaches Supabase.
  * Keep this generous: it is a ceiling, not a target, so ordinary turns cost the same.
+ *
+ * Raising the ceiling alone was not enough. A reply this long takes minutes to
+ * generate, and an unstreamed request spends every one of those minutes with no
+ * bytes on the wire, so it gets dropped in transit before it ever returns — the
+ * fetch below throws and the candidate sees "Connection error: Error 500" on the
+ * very last turn. Every /api/chat call is streamed for that reason; see below.
  */
-const MAX_TOKENS = 16000;
+const MAX_TOKENS = 32000;
 
 const TEAMWORK_SITE = 'https://mybizniche.teamwork.com';
 
@@ -169,7 +178,7 @@ async function handle(request, env) {
     return new Response(null, { headers: CORS });
   }
 
-  // POST /api/chat — proxy to Claude
+  // POST /api/chat — proxy to Claude, streamed
   if (url.pathname === '/api/chat' && request.method === 'POST') {
     const { messages } = await request.json();
 
@@ -178,8 +187,9 @@ async function handle(request, env) {
     const filteredMessages = messages.filter(m => m.role !== 'system');
 
     const body = {
-      model: MODEL,
+      model: env.CLAUDE_MODEL || DEFAULT_MODEL,
       max_tokens: MAX_TOKENS,
+      stream: true,
       messages: filteredMessages,
     };
     if (systemMsg) body.system = systemMsg.content;
@@ -194,9 +204,26 @@ async function handle(request, env) {
       body: JSON.stringify(body),
     });
 
-    const data = await res.json();
-    if (!res.ok) return json({ error: data }, res.status);
-    return json(data);   // includes stop_reason — the page checks it
+    /* Errors still arrive as one JSON body. Unwrap Claude's own message rather
+       than handing the page an object it can only render as "Error <status>" —
+       the reason a request failed is the whole point of showing an error. */
+    if (!res.ok || !res.body) {
+      const detail = await res.text();
+      let message = detail.slice(0, 500);
+      try { message = JSON.parse(detail).error?.message || message; } catch (_) {}
+      return json({ error: { message: `Claude API ${res.status}: ${message}` } }, res.status);
+    }
+
+    /* Pass the SSE stream straight through. Bytes start flowing immediately, so
+       neither the browser nor Cloudflare gives up on a turn that takes minutes. */
+    return new Response(res.body, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+        ...CORS,
+      },
+    });
   }
 
   // POST /api/submit — save report to Supabase + create Teamwork task

@@ -59,7 +59,7 @@ wrangler.toml         Cloudflare deployment config
 
 | Method | Path | What it does |
 |---|---|---|
-| POST | `/api/chat` | Proxies messages to Claude (Anthropic API) |
+| POST | `/api/chat` | Proxies messages to Claude (Anthropic API). **Streams** — the response is a `text/event-stream` of Anthropic SSE frames, not a JSON message. |
 | POST | `/api/submit` | Saves report to Supabase + creates Teamwork task |
 | GET | `/api/report/:code` | Returns report JSON for reviewer dashboard (requires `X-Admin-Passcode` header) |
 
@@ -73,7 +73,7 @@ wrangler.toml         Cloudflare deployment config
 | GitHub | Source of truth | `DonnasBizNiche/mbn-hiring-portal` |
 | Supabase | Store assessment reports | Project `vlanjprnlcvztskngocg` (MBN Reporting Command Center), table: `assessment_reports` |
 | Teamwork | Candidate task cards | Project 758831 ("Donna's Workspace - Internal"), tasklist 3346283, workflow 82559, stage 474512 ("Completed Skills Assessment" board column) |
-| Anthropic | Claude powers the interviews | claude-opus-4-5, `max_tokens` 16000 |
+| Anthropic | Claude powers the interviews | claude-opus-4-5, `max_tokens` 32000, streamed |
 
 ---
 
@@ -84,6 +84,7 @@ Set in Cloudflare Pages → Settings → Environment Variables. All marked **Sec
 | Variable | Description |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API key |
+| `CLAUDE_MODEL` | Optional — model the interviews run on (default `claude-opus-4-5`). Set this to move to a newer model without a deploy. |
 | `SUPABASE_URL` | `https://vlanjprnlcvztskngocg.supabase.co` |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (Settings → API in Supabase dashboard) |
 | `TEAMWORK_API_KEY` | Teamwork personal access token |
@@ -146,6 +147,20 @@ wrangler pages deploy . --project-name employment-skills-assessment --branch mai
   card, and a completion code that matched nothing. Fixed by raising `max_tokens`,
   detecting the opening marker alone, salvaging whatever JSON parsed, and always
   submitting with the full transcript attached.
+- August 2026: the fix above stopped the truncation but broke the last turn a
+  different way. The closing report takes minutes to generate, and it was being
+  requested unstreamed — so that request sat with no bytes on the wire until it
+  was dropped in transit, the worker's `fetch` threw, and the candidate got
+  `Connection error: Error 500` after finishing the whole interview. `/api/chat`
+  now streams: the worker passes Anthropic's SSE straight through and the
+  assessment pages reassemble it, so the reply is rendered as it arrives and a
+  long turn can't time out. Two things to know if you touch this:
+    - `/api/chat` returns an event stream, not JSON. Anything new that calls it
+      has to read `response.body`, not `response.json()`.
+    - The page holds back any trailing text that could be the start of
+      `<<<REPORT_START>>>`, so a half-arrived marker never flashes on screen.
+  Claude API errors are now unwrapped into `{ error: { message } }` as well —
+  "Error 500" told nobody anything, including us.
 - The duplicate `worker.js` was deleted at the same time — Pages only ever ran
   `_worker.js`, so edits to the copy silently did nothing.
 - Also August 2026: candidate cards never showed on the Teamwork board. Creating a

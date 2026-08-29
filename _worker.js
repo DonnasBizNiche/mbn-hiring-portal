@@ -76,6 +76,30 @@ function inferAssessmentType(report) {
   return 'assessment';
 }
 
+/* Postgres jsonb cannot store a NUL character, and a lone surrogate is not
+   valid UTF-8. Either one makes the insert fail with a 400 that no retry will
+   ever get past — and since the report only exists in the candidate's browser,
+   that is a finished assessment lost. Candidates paste answers out of Word and
+   PDFs, so this is not a hypothetical input. Strip them on the way in.
+
+   Defensive, not a diagnosed fix: no submission has been observed failing this
+   way. It costs nothing on clean input and removes the possibility. */
+function scrubForJsonb(value) {
+  if (typeof value === 'string') {
+    return value
+      .replace(/\u0000/g, '')
+      .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+      .replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '$1');
+  }
+  if (Array.isArray(value)) return value.map(scrubForJsonb);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[scrubForJsonb(k)] = scrubForJsonb(v);
+    return out;
+  }
+  return value;
+}
+
 async function saveReport(env, row) {
   return fetch(`${env.SUPABASE_URL}/rest/v1/assessment_reports`, {
     method: 'POST',
@@ -241,7 +265,7 @@ async function handle(request, env) {
 
   // POST /api/submit — save report to Supabase + create Teamwork task
   if (url.pathname === '/api/submit' && request.method === 'POST') {
-    const report = await request.json();
+    const report = scrubForJsonb(await request.json());
     let code = report.completion_code;
     const candidateName = report.candidate_name || 'Unknown';
     const assessmentType = inferAssessmentType(report);

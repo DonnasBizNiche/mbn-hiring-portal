@@ -115,22 +115,12 @@ async function saveReport(env, row) {
 
 /* Teamwork Projects API v1. Returns an outcome rather than throwing — a failed
    card is worth knowing about, but never worth losing a candidate's report over. */
-async function createTeamworkTask(env, { code, candidateName, assessmentType, score, report }) {
+/* Creates a task and files it into the board column. Shared by the normal
+   submission path and by the rescue path below. */
+async function fileTeamworkCard(env, taskName, description) {
   const tasklistId = env.TEAMWORK_TASKLIST_ID || DEFAULT_TASKLIST_ID;
 
   if (!env.TEAMWORK_API_KEY) return { ok: false, error: 'TEAMWORK_API_KEY is not set' };
-
-  const taskName = `${assessmentType.toUpperCase()} — ${candidateName}${score != null ? ` (${score}%)` : ''} — Code: ${code}`;
-  const description = [
-    `Candidate: ${candidateName}`,
-    `Email: ${report.candidate_email || 'Not provided'}`,
-    `Assessment: ${assessmentType}`,
-    score != null ? `Score: ${score}%` : '',
-    `Completion Code: ${code}`,
-    `Referral: ${report.referral_source || 'Not provided'}`,
-    report.report_incomplete ? 'NOTE: AI summary incomplete — full transcript is on the review page.' : '',
-    `Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
-  ].filter(Boolean).join('\n');
 
   try {
     const res = await fetch(`${TEAMWORK_SITE}/tasklists/${tasklistId}/tasks.json`, {
@@ -167,6 +157,23 @@ async function createTeamworkTask(env, { code, candidateName, assessmentType, sc
   } catch (err) {
     return { ok: false, tasklist_id: tasklistId, error: String(err && err.message || err) };
   }
+}
+
+async function createTeamworkTask(env, { code, candidateName, assessmentType, score, report }) {
+
+  const taskName = `${assessmentType.toUpperCase()} — ${candidateName}${score != null ? ` (${score}%)` : ''} — Code: ${code}`;
+  const description = [
+    `Candidate: ${candidateName}`,
+    `Email: ${report.candidate_email || 'Not provided'}`,
+    `Assessment: ${assessmentType}`,
+    score != null ? `Score: ${score}%` : '',
+    `Completion Code: ${code}`,
+    `Referral: ${report.referral_source || 'Not provided'}`,
+    report.report_incomplete ? 'NOTE: AI summary incomplete — full transcript is on the review page.' : '',
+    `Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+  ].filter(Boolean).join('\n');
+
+  return fileTeamworkCard(env, taskName, description);
 }
 
 /* Files a task into a board column. Without this the card exists but renders in
@@ -313,6 +320,53 @@ async function handle(request, env) {
 
     // Return the code actually stored — it may have been suffixed above
     return json({ ok: true, code, teamwork });
+  }
+
+  /* POST /api/rescue — the last line of defence.
+
+     Every failure this portal has had ends the same way: a candidate finishes a
+     25-minute assessment whose only copy is in their browser, one HTTP call at
+     the very end fails, and the work is gone with nobody the wiser. Retrying and
+     stashing locally (see the assessment pages) covers the candidate who comes
+     back. This covers the one who doesn't.
+
+     Teamwork and Supabase fail independently, so when Supabase will not take the
+     report we put the candidate's answers — in full — on the board that MBN
+     actually watches, along with the error Supabase returned. That turns a
+     silent loss into a visible card someone can act on, and it finally carries
+     the error message out of the Cloudflare log where nobody could read it. */
+  if (url.pathname === '/api/rescue' && request.method === 'POST') {
+    const body = scrubForJsonb(await request.json());
+    const report = body.report || {};
+    const code = report.completion_code || 'no code';
+    const name = report.candidate_name || 'Unknown candidate';
+
+    const transcript = Array.isArray(report.transcript) ? report.transcript : [];
+    const answers = transcript
+      .map(m => `${m.role === 'assistant' ? 'INTERVIEWER' : 'CANDIDATE'}:\n${m.content}`)
+      .join('\n\n');
+
+    const description = [
+      'THIS ASSESSMENT COULD NOT BE SAVED TO THE DATABASE.',
+      'The candidate completed it. Their answers are reproduced below in full,',
+      'because this card may be the only remaining copy. Do not delete it until',
+      'the report has been recovered.',
+      '',
+      `Candidate: ${name}`,
+      `Email: ${report.candidate_email || 'Not provided'}`,
+      `Assessment: ${report.assessment_type || 'unknown'}`,
+      `Completion code shown to them: ${code}`,
+      `Failed at: ${new Date().toISOString()}`,
+      '',
+      `Error reported by the server: ${String(body.error || 'not recorded')}`,
+      '',
+      '──────── FULL TRANSCRIPT ────────',
+      answers || '(no transcript captured)',
+    ].join('\n').slice(0, 60000);   // keep the request comfortably inside limits
+
+    const card = await fileTeamworkCard(env, `⚠️ SUBMISSION FAILED — ${name} — ${code}`, description);
+    if (!card.ok) console.error('Rescue card failed too:', card.error);
+    return json({ ok: card.ok, teamwork: card });
   }
 
   // GET /api/report/:code — retrieve report for reviewer dashboard

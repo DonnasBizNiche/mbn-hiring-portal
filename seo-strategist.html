@@ -649,6 +649,23 @@ async function postReport(payload){
   throw lastErr || new Error('Submission failed');
 }
 
+/* Retrying and stashing protects the candidate who comes back to this page.
+   This protects the one who doesn't: it puts their answers on the Teamwork
+   board, which fails independently of Supabase, so the work is never in only
+   one place. It also carries the server's error out to somewhere MBN can read
+   it, which the Cloudflare log is not. */
+async function rescueToTeamwork(payload, err){
+  try{
+    const r = await fetch('/api/rescue',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ report: payload, error: String(err && err.message || err) }),
+    });
+    const d = await r.json().catch(() => ({}));
+    return !!(d && d.ok);
+  }catch(_){ return false; }
+}
+
 /* Kept on disk when filing fails, so the finished report survives the tab
    closing and can be resent on the next visit. */
 function stashUnsent(payload){
@@ -670,10 +687,16 @@ async function resendUnsent(){
     const d = await postReport(payload);
     clearSaved();
     const code = d.code || payload.completion_code;
-    el('resumeCard').classList.remove('hidden');
-    el('resumeCard').querySelector('h4').textContent = '✓ Your completed assessment has now been sent';
-    el('resumeInfo').textContent =
-      `An earlier attempt could not reach us. It has just been filed successfully. Your completion code is ${code}.`;
+    /* Not every assessment page has a resume card to announce this in. */
+    const card = el('resumeCard');
+    if(card){
+      card.classList.remove('hidden');
+      const h = card.querySelector('h4');
+      if(h) h.textContent = '✓ Your completed assessment has now been sent';
+      const info = el('resumeInfo');
+      if(info) info.textContent =
+        `An earlier attempt could not reach us. It has just been filed successfully. Your completion code is ${code}.`;
+    }
   }catch(_){
     /* Still failing — leave it stashed and try again next time. */
   }
@@ -707,8 +730,17 @@ async function complete(){
        a "note" while the code sat above it looking valid, so a candidate had no
        reason to think anything was wrong — and neither did we. */
     stashUnsent(payload);
+    /* Get it onto the Teamwork board before doing anything else — this is the
+       copy that survives the candidate closing the tab. */
+    const rescued = await rescueToTeamwork(payload, err);
     el('submitErr').innerHTML =
-      '<strong>Your assessment has not been filed yet.</strong><br>' +
+      (rescued
+        ? '<strong>Your answers have reached the MBN hiring team.</strong><br>' +
+          'A technical fault stopped the assessment filing normally, so it has been ' +
+          'sent to the team directly instead. Nothing is lost and no action is needed ' +
+          'from you — someone will be in touch. The code above is not a working ' +
+          'lookup code, so please keep this page or the download below until you hear back.<br><br>'
+        : '<strong>Your assessment has not been filed yet.</strong><br>') +
       'The code above is not registered with MBN until this succeeds. Nothing is lost — ' +
       'your answers are saved in this browser and we will try again automatically next time ' +
       'you open this page. Please also click Download below and email it to ' +

@@ -41,6 +41,12 @@ tools/                Developer utilities (not deployed as part of the app)
   test-submission.js  Paste into the browser console on the live site to file a
                       complete fake submission — checks Supabase, /review and the
                       Teamwork board without sitting through the interview
+  check-pages.mjs     node tools/check-pages.mjs *.html — executes each page's
+                      script against a DOM stub and fails if it throws, then
+                      checks every live assessment defines the submission-failure
+                      helpers. Run before pushing any assessment page change:
+                      `node --check` only parses, and a page calling a function
+                      that was never defined has shipped that way before
   test-interview.js   Paste into the console ON an assessment page to play a
                       scripted candidate through the whole interview against the
                       live /api/chat. The only way to exercise the closing report
@@ -67,6 +73,7 @@ wrangler.toml         Cloudflare deployment config
 |---|---|---|
 | POST | `/api/chat` | Proxies messages to Claude (Anthropic API). **Streams** — the response is a `text/event-stream` of Anthropic SSE frames, not a JSON message. |
 | POST | `/api/submit` | Saves report to Supabase + creates Teamwork task |
+| POST | `/api/rescue` | Last-resort path when `/api/submit` fails: files the candidate's full transcript onto the Teamwork board, with the server error, so a failed save is never a silent loss |
 | GET | `/api/report/:code` | Returns report JSON for reviewer dashboard (requires `X-Admin-Passcode` header) |
 
 ---

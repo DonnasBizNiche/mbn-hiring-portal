@@ -206,6 +206,11 @@
 
 <script>
 /* ── STATE ─────────────────────────────────────────── */
+/* This assessment saves no in-progress state, but a finished report that
+   cannot be filed is still worth keeping until it reaches us. */
+const SAVE_KEY   = 'mbn_techseo_progress_v1';
+const UNSENT_KEY = 'mbn_techseo_unsent_v1';
+
 const S = {
   candidate:  { name:'', email:'', source:'' },
   messages:   [],
@@ -596,6 +601,90 @@ async function ai(){
 }
 
 /* ── COMPLETION ────────────────────────────────────── */
+/* ── FILING THE REPORT ─────────────────────────────────
+   A failed submission here is a finished assessment lost. The candidate has
+   already been shown a completion code, the report exists only in this tab's
+   memory, and nobody finds out until someone looks for a card that was never
+   created. So: retry, keep everything on disk until the server confirms, and
+   never tell the candidate it worked when it didn't. */
+async function postReport(payload){
+  let lastErr;
+  for(let attempt = 1; attempt <= 3; attempt++){
+    try{
+      const r = await fetch('/api/submit',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json().catch(() => ({}));
+      if(r.ok) return d;
+      /* The worker returns { error, detail } on a Supabase failure and the
+         detail is the part that says what actually went wrong — carry it. */
+      lastErr = new Error([d.error, d.detail].filter(Boolean).join(' — ') || `Status ${r.status}`);
+      /* A 4xx will fail identically next time; only retry what might change. */
+      if(r.status >= 400 && r.status < 500 && r.status !== 429) break;
+    }catch(err){
+      lastErr = err;   // network dropped mid-post
+    }
+    if(attempt < 3) await new Promise(res => setTimeout(res, attempt * 2500));
+  }
+  throw lastErr || new Error('Submission failed');
+}
+
+/* Retrying and stashing protects the candidate who comes back to this page.
+   This protects the one who doesn't: it puts their answers on the Teamwork
+   board, which fails independently of Supabase, so the work is never in only
+   one place. It also carries the server's error out to somewhere MBN can read
+   it, which the Cloudflare log is not. */
+async function rescueToTeamwork(payload, err){
+  try{
+    const r = await fetch('/api/rescue',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ report: payload, error: String(err && err.message || err) }),
+    });
+    const d = await r.json().catch(() => ({}));
+    return !!(d && d.ok);
+  }catch(_){ return false; }
+}
+
+/* Kept on disk when filing fails, so the finished report survives the tab
+   closing and can be resent on the next visit. */
+function stashUnsent(payload){
+  try{ localStorage.setItem(UNSENT_KEY, JSON.stringify(payload)); }catch(_){}
+}
+
+function clearSaved(){
+  try{ localStorage.removeItem(SAVE_KEY); }catch(_){}
+  try{ localStorage.removeItem(UNSENT_KEY); }catch(_){}
+}
+
+/* On load, quietly try to file anything a previous visit could not. This is the
+   difference between an assessment that is lost and one that is merely late. */
+async function resendUnsent(){
+  let payload = null;
+  try{ payload = JSON.parse(localStorage.getItem(UNSENT_KEY) || 'null'); }catch(_){ return; }
+  if(!payload) return;
+  try{
+    const d = await postReport(payload);
+    clearSaved();
+    const code = d.code || payload.completion_code;
+    /* Not every assessment page has a resume card to announce this in. */
+    const card = el('resumeCard');
+    if(card){
+      card.classList.remove('hidden');
+      const h = card.querySelector('h4');
+      if(h) h.textContent = '✓ Your completed assessment has now been sent';
+      const info = el('resumeInfo');
+      if(info) info.textContent =
+        `An earlier attempt could not reach us. It has just been filed successfully. Your completion code is ${code}.`;
+    }
+  }catch(_){
+    /* Still failing — leave it stashed and try again next time. */
+  }
+}
+
+
 async function complete(){
   el('cpCode').textContent = S.code;
   showScreen('sComplete');
@@ -614,19 +703,48 @@ async function complete(){
   S.payload = payload;
 
   try{
-    const r = await fetch('/api/submit',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload),
-    });
-    const d = await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(d.error||`Status ${r.status}`);
+    const d = await postReport(payload);
     // The worker may have suffixed the code to dodge a collision — show what it stored
     if(d.code && d.code !== S.code){ S.code = d.code; el('cpCode').textContent = S.code; }
     el('submitOk').classList.remove('hidden');
+    clearSaved();
   }catch(err){
-    el('submitErr').textContent = `Note: auto-submit failed (${err.message}). Please download your summary below and email it to careers@mybizniche.com.`;
+    /* Say plainly that the code is not registered. The old wording called this
+       a "note" while the code sat above it looking valid, so a candidate had no
+       reason to think anything was wrong — and neither did we. */
+    stashUnsent(payload);
+    /* Get it onto the Teamwork board before doing anything else — this is the
+       copy that survives the candidate closing the tab. */
+    const rescued = await rescueToTeamwork(payload, err);
+    el('submitErr').innerHTML =
+      (rescued
+        ? '<strong>Your answers have reached the MBN hiring team.</strong><br>' +
+          'A technical fault stopped the assessment filing normally, so it has been ' +
+          'sent to the team directly instead. Nothing is lost and no action is needed ' +
+          'from you — someone will be in touch. The code above is not a working ' +
+          'lookup code, so please keep this page or the download below until you hear back.<br><br>'
+        : '<strong>Your assessment has not been filed yet.</strong><br>') +
+      'The code above is not registered with MBN until this succeeds. Nothing is lost — ' +
+      'your answers are saved in this browser and we will try again automatically next time ' +
+      'you open this page. Please also click Download below and email it to ' +
+      'careers@mybizniche.com so the hiring team has it either way.' +
+      '<br><br><button type="button" class="btn" id="retryBtn">Try sending again</button>' +
+      '<br><br><span style="opacity:.7;font-size:12px">Technical detail: ' +
+      String(err.message).replace(/[<>]/g, '') + '</span>';
     el('submitErr').classList.remove('hidden');
+    el('retryBtn').onclick = async () => {
+      const b = el('retryBtn');
+      b.disabled = true; b.textContent = 'Sending…';
+      try{
+        const d = await postReport(payload);
+        if(d.code) { S.code = d.code; el('cpCode').textContent = S.code; }
+        el('submitErr').classList.add('hidden');
+        el('submitOk').classList.remove('hidden');
+        clearSaved();
+      }catch(e2){
+        b.disabled = false; b.textContent = 'Try sending again';
+      }
+    };
   }
 }
 

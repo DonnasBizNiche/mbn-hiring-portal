@@ -87,14 +87,19 @@ for (const file of files) {
 // Which are live comes from the catalog, so retiring or adding one needs no edit here.
 globalThis.window = {};
 await import('file://' + process.cwd() + '/assessments.js');
-const live = new Set(
-  (globalThis.window.ASSESSMENT_CATALOG || [])
-    .filter(a => a.status !== 'retired')
-    .map(a => a.url.replace(/^\//, '') + '.html'));
+const catalog = globalThis.window.ASSESSMENT_CATALOG || [];
+const fileOf = a => a.url.replace(/^\//, '') + '.html';
+const live    = new Set(catalog.filter(a => a.status !== 'retired').map(fileOf));
+const retired = new Set(catalog.filter(a => a.status === 'retired').map(fileOf));
 
 const required = ['postReport', 'rescueToTeamwork', 'stashUnsent', 'clearSaved', 'resendUnsent'];
 for (const file of files) {
-  if (!live.has(file)) { console.log(`SKIP  ${file} — retired, not offered to candidates`); continue; }
+  if (!live.has(file)) {
+    console.log(`SKIP  ${file} — ` + (retired.has(file)
+      ? 'retired, not offered to candidates'
+      : 'not an assessment page'));
+    continue;
+  }
   const html = fs.readFileSync(file, 'utf8');
   const missing = required.filter(fn => !new RegExp(`function ${fn}\\s*\\(`).test(html));
   if (missing.length) { console.log(`FAIL  ${file} — missing: ${missing.join(', ')}`); fail++; }

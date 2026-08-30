@@ -9,7 +9,9 @@
  *   1. Open https://employment-skills-assessment.pages.dev in Chrome
  *   2. Press F12 (or Cmd+Option+I on a Mac) and click the "Console" tab
  *   3. Paste this whole file in, press Enter
- *   4. Copy the completion code it prints, then look it up at /review
+ *   4. It asks for the admin passcode so it can read the record back out of
+ *      the database. That read-back is the actual proof — the "SUBMITTED OK"
+ *      line above it is only the submit call describing itself.
  *
  * It must be run from a tab on the portal itself — that is what makes the
  * /api/submit call go to the right place.
@@ -131,6 +133,38 @@
     }
 
     console.log('Full response:', data);
+
+    /* Everything above is the submit call describing itself. That is not proof:
+       the page said "SUBMITTED OK" on a run whose record nobody could then find,
+       and the only honest answer was "supposedly". So read the record back out
+       of the database through /api/report and check it is really there. */
+    const passcode = window.prompt('Admin passcode (to verify the record actually saved) — Cancel to skip:');
+    if (!passcode) {
+      console.warn('%cNOT VERIFIED — you skipped the read-back. The submit call reported success, '
+        + 'but nothing has confirmed the record exists.', 'color:#d97706;font-weight:bold');
+      return;
+    }
+
+    const check = await fetch('/api/report/' + encodeURIComponent(finalCode), {
+      headers: { 'X-Admin-Passcode': passcode },
+    });
+    if (!check.ok) {
+      console.error('%cVERIFICATION FAILED — HTTP ' + check.status
+        + (check.status === 401 ? ' (wrong passcode, so this proves nothing either way)' : ''),
+        'color:#dc2626;font-weight:bold');
+      return;
+    }
+    const saved = await check.json().catch(() => ({}));
+    const nameMatches = saved.candidate_name === report.candidate_name;
+    const codeMatches = saved.completion_code === finalCode;
+    if (nameMatches && codeMatches) {
+      console.log('%cVERIFIED — the record was read back out of the database.',
+        'color:#16a34a;font-weight:bold;font-size:14px');
+      console.log('Stored as:', saved.candidate_name, '/', saved.completion_code, '/ submitted', saved.submitted_at);
+    } else {
+      console.error('%cVERIFICATION FAILED — a record came back but does not match what was sent.',
+        'color:#dc2626;font-weight:bold', { expected: { name: report.candidate_name, code: finalCode }, got: saved });
+    }
   } catch (err) {
     console.error('%cFAILED — could not reach /api/submit', 'color:#dc2626;font-weight:bold', err);
   }

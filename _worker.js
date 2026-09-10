@@ -369,6 +369,85 @@ async function handle(request, env) {
     return json({ ok: card.ok, teamwork: card });
   }
 
+  /* GET /api/diag — what is this worker actually configured to talk to?
+
+     Every investigation this month has stalled on the same wall: nobody outside
+     Cloudflare can see which Supabase project the worker writes to, whether the
+     Teamwork key still works, or what Supabase says when a save fails. The
+     answers only exist inside the worker, and the worker never told anyone.
+
+     Reports the Supabase HOSTNAME (which identifies the project and is not a
+     secret), whether each variable is set, and the result of a live probe
+     against both services. It never returns a key, a token, or a passcode —
+     only booleans and HTTP statuses. Admin passcode required. */
+  if (url.pathname === '/api/diag' && request.method === 'GET') {
+    if (request.headers.get('X-Admin-Passcode') !== env.ADMIN_PASSCODE) {
+      return json({ error: 'Unauthorized' }, 401);
+    }
+
+    const out = {
+      config: {
+        supabase_host: (() => {
+          try { return new URL(env.SUPABASE_URL).hostname; } catch (_) { return null; }
+        })(),
+        supabase_url_set:  !!env.SUPABASE_URL,
+        supabase_key_set:  !!env.SUPABASE_SERVICE_KEY,
+        anthropic_key_set: !!env.ANTHROPIC_API_KEY,
+        teamwork_key_set:  !!env.TEAMWORK_API_KEY,
+        admin_passcode_set: !!env.ADMIN_PASSCODE,
+        model: env.CLAUDE_MODEL || DEFAULT_MODEL,
+        tasklist_id: env.TEAMWORK_TASKLIST_ID || DEFAULT_TASKLIST_ID,
+        workflow_id: env.TEAMWORK_WORKFLOW_ID || DEFAULT_WORKFLOW_ID,
+        stage_id:    env.TEAMWORK_STAGE_ID    || DEFAULT_STAGE_ID,
+      },
+      supabase: { ok: false },
+      teamwork: { ok: false },
+    };
+
+    /* Can we actually read the reports table, and how many rows are in it? */
+    try {
+      const res = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/assessment_reports?select=completion_code&limit=1`,
+        {
+          headers: {
+            apikey: env.SUPABASE_SERVICE_KEY,
+            Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+            Prefer: 'count=exact',
+          },
+        }
+      );
+      const body = await res.text();
+      out.supabase = {
+        ok: res.ok,
+        status: res.status,
+        // PostgREST returns "0-0/12" in content-range; the total is after the slash
+        row_count: (res.headers.get('content-range') || '').split('/')[1] ?? null,
+        error: res.ok ? null : body.slice(0, 300),
+      };
+    } catch (err) {
+      out.supabase = { ok: false, error: String(err && err.message || err) };
+    }
+
+    /* Is the Teamwork key still valid? Nothing has reached the board since
+       Sept 4, and a dead key would explain both the missing candidate card and
+       the missing rescue card. */
+    try {
+      const res = await fetch(`${TEAMWORK_SITE}/me.json`, {
+        headers: { Authorization: `Basic ${btoa((env.TEAMWORK_API_KEY || '') + ':xxx')}` },
+      });
+      const body = await res.text();
+      out.teamwork = {
+        ok: res.ok,
+        status: res.status,
+        error: res.ok ? null : body.slice(0, 200),
+      };
+    } catch (err) {
+      out.teamwork = { ok: false, error: String(err && err.message || err) };
+    }
+
+    return json(out);
+  }
+
   /* GET /api/reports — list recent submissions, newest first.
 
      Until now the only way into a report was an exact completion code, so one

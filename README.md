@@ -74,6 +74,8 @@ wrangler.toml         Cloudflare deployment config
 | POST | `/api/chat` | Proxies messages to Claude (Anthropic API). **Streams** — the response is a `text/event-stream` of Anthropic SSE frames, not a JSON message. |
 | POST | `/api/submit` | Saves report to Supabase + creates Teamwork task |
 | POST | `/api/rescue` | Last-resort path when `/api/submit` fails: files the candidate's full transcript onto the Teamwork board, with the server error, so a failed save is never a silent loss |
+| GET | `/api/reports` | Lists recent submissions (requires `X-Admin-Passcode`) so a report can be found by candidate name instead of an exact code |
+| GET | `/api/diag` | Reports which Supabase project the worker is pointed at, which env vars are set, and a live probe of Supabase and Teamwork (requires `X-Admin-Passcode`). Returns hostnames, booleans and HTTP statuses only — never a key |
 | GET | `/api/report/:code` | Returns report JSON for reviewer dashboard (requires `X-Admin-Passcode` header) |
 
 ---
@@ -127,6 +129,13 @@ submission, plus `report_incomplete: true` (no AI summary could be parsed) or
 `report_truncated: true` (only part of it parsed). The review page shows the transcript
 whenever the per-question report is missing, so a submission is never unrecoverable.
 
+> **The reports live in `MBN Reporting Command Center`, in `DonnasBizNiche's Org`.**
+> Confirmed September 2026 by looking at the table directly. This is a *different
+> Supabase organisation* from the one holding `SEO Command Center`,
+> `Dee Dee Digital Client Portal` and `Stratify Project` — which is why searching
+> those three for the reports table keeps coming up empty. `GET /api/diag` reports
+> the hostname the worker is actually using, so this never has to be guessed again.
+>
 > **Don't trust a project id written down here — check `SUPABASE_URL` in Cloudflare.**
 > This README used to name `vlanjprnlcvztskngocg` ("MBN Reporting Command Center") as the
 > store. In August 2026 that was checked directly and it is wrong twice over: that project

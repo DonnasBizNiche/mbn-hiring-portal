@@ -126,7 +126,7 @@
 <div class="screen active" id="sLogin">
   <div class="login-wrap">
     <h1>Reviewer Access</h1>
-    <p>Enter your admin passcode and the candidate's completion code to access their report.</p>
+    <p>Enter your admin passcode and the candidate's completion code — or enter the passcode alone and browse recent submissions by name.</p>
     <div class="card">
       <div class="fg">
         <label>Admin Passcode</label>
@@ -137,7 +137,11 @@
         <input type="text" id="inCode" placeholder="e.g. MBN-7K4P" autocomplete="off" style="text-transform:uppercase">
       </div>
       <button class="btn" id="loadBtn" onclick="loadReport()">Load Report</button>
+      <button class="btn btn-sec" id="browseBtn" onclick="browseReports()" style="margin-top:10px">
+        Don't have the code? Show recent submissions
+      </button>
       <div class="err" id="loginErr" style="display:none"></div>
+      <div id="browseList" style="display:none;margin-top:16px"></div>
     </div>
   </div>
 </div>
@@ -330,6 +334,70 @@ async function loadReport(){
     btn.textContent = 'Load Report';
     btn.disabled = false;
   }
+}
+
+/* Look the candidate up by name instead of by code.
+
+   An exact-code lookup makes a mistyped character look identical to a lost
+   assessment, and the codes the model generates cluster tightly enough that
+   confusing two of them is easy. This lists what is actually in the database,
+   so "is it there?" stops being a guess. */
+async function browseReports(){
+  const pass = el('inPass').value.trim();
+  const btn  = el('browseBtn');
+  const list = el('browseList');
+
+  el('loginErr').style.display = 'none';
+  if(!pass){ showErr('Enter your admin passcode first.'); return; }
+
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+
+  try{
+    const r = await fetch('/api/reports?limit=50', { headers: { 'X-Admin-Passcode': pass } });
+    if(r.status === 401){ showErr('Incorrect passcode.'); return; }
+    if(!r.ok){
+      const d = await r.json().catch(() => ({}));
+      showErr(`Could not list submissions (${r.status})${d.detail ? ' — ' + d.detail : ''}`);
+      return;
+    }
+
+    const { reports = [] } = await r.json();
+    if(!reports.length){
+      list.innerHTML = '<div class="err" style="display:block">No submissions in the database at all. '
+        + 'That is a storage problem, not a wrong code.</div>';
+      list.style.display = 'block';
+      return;
+    }
+
+    list.innerHTML = '<div style="font-size:12px;opacity:.7;margin-bottom:8px">'
+      + reports.length + ' most recent — click one to open</div>'
+      + reports.map(rep => {
+          const when = rep.submitted_at
+            ? new Date(rep.submitted_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})
+            : 'unknown date';
+          const name = String(rep.candidate_name || 'Unknown').replace(/[<>]/g,'');
+          const code = String(rep.completion_code || '').replace(/[<>]/g,'');
+          const score = rep.score != null ? ` · ${rep.score}%` : '';
+          return `<button type="button" class="btn btn-sec" style="display:block;width:100%;`
+            + `text-align:left;margin-bottom:6px;font-weight:400"`
+            + ` onclick="openFromList('${code.replace(/'/g,"")}')">`
+            + `<strong>${name}</strong>${score}<br>`
+            + `<span style="font-size:12px;opacity:.7">${code} · ${when}</span></button>`;
+        }).join('');
+    list.style.display = 'block';
+
+  }catch(err){
+    showErr(`Connection error: ${err.message}`);
+  }finally{
+    btn.textContent = "Don't have the code? Show recent submissions";
+    btn.disabled = false;
+  }
+}
+
+function openFromList(code){
+  el('inCode').value = code;
+  loadReport();
 }
 
 function showErr(msg){

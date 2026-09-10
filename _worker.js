@@ -369,6 +369,46 @@ async function handle(request, env) {
     return json({ ok: card.ok, teamwork: card });
   }
 
+  /* GET /api/reports — list recent submissions, newest first.
+
+     Until now the only way into a report was an exact completion code, so one
+     mistyped character was indistinguishable from the assessment never having
+     saved. That has twice sent people hunting for a bug that wasn't there, and
+     once left a real candidate unreachable because the code they quoted didn't
+     match the code that was stored. Codes come from the model and cluster
+     tightly around the example in the prompt (MBN-8K2R, MBN-9K2R, MBN-9T3K),
+     which makes the confusion easy.
+
+     Deliberately does not return report_json: this is a directory, not a bulk
+     export, and the per-code route already serves the full record. */
+  if (url.pathname === '/api/reports' && request.method === 'GET') {
+    if (request.headers.get('X-Admin-Passcode') !== env.ADMIN_PASSCODE) {
+      return json({ error: 'Unauthorized' }, 401);
+    }
+
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
+    const res = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/assessment_reports` +
+      `?select=completion_code,candidate_name,candidate_email,assessment_type,score,submitted_at` +
+      `&order=submitted_at.desc&limit=${limit}`,
+      {
+        headers: {
+          apikey: env.SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Supabase list failed:', res.status, err);
+      return json({ error: `Lookup failed (${res.status})`, detail: err.slice(0, 300) }, 500);
+    }
+
+    const rows = await res.json();
+    return json({ ok: true, count: Array.isArray(rows) ? rows.length : 0, reports: rows });
+  }
+
   // GET /api/report/:code — retrieve report for reviewer dashboard
   if (url.pathname.startsWith('/api/report/') && request.method === 'GET') {
     const passcode = request.headers.get('X-Admin-Passcode');

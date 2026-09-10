@@ -41,6 +41,11 @@ tools/                Developer utilities (not deployed as part of the app)
   test-submission.js  Paste into the browser console on the live site to file a
                       complete fake submission — checks Supabase, /review and the
                       Teamwork board without sitting through the interview
+  check-completion.mjs node tools/check-completion.mjs — holds the save open and
+                      asserts the completion screen still says "Filing…". A real
+                      candidate was lost because the code appeared before the
+                      save was attempted, so they copied it and closed the tab,
+                      cancelling the save, its retries and the rescue card
   check-pages.mjs     node tools/check-pages.mjs *.html — executes each page's
                       script against a DOM stub and fails if it throws, then
                       checks every live assessment defines the submission-failure

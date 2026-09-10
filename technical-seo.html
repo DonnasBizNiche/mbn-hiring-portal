@@ -187,13 +187,13 @@
 <!-- COMPLETION -->
 <div id="sComplete" class="screen">
   <div class="c-wrap">
-    <div class="c-icon">✓</div>
+    <div class="c-icon" id="cpIcon">✓</div>
     <h2 class="c-h2">Assessment Complete</h2>
-    <p class="c-sub">Thank you for completing the Technical SEO Specialist assessment. Your responses have been submitted to the MBN hiring team and will be reviewed within 3–5 business days.</p>
+    <p class="c-sub" id="cpSub">Thank you for completing the Technical SEO Specialist assessment. Your responses have been submitted to the MBN hiring team and will be reviewed within 3–5 business days.</p>
     <div class="code-card">
       <div class="code-lbl">Completion Code</div>
       <div class="code-val" id="cpCode">—</div>
-      <div class="code-hint">Save this code. You may be asked to reference it during follow-up.</div>
+      <div class="code-hint" id="cpHint">Save this code. You may be asked to reference it during follow-up.</div>
     </div>
     <div class="c-actions">
       <button class="btn btn-sec" id="dlBtn">📄 Download My Response Summary</button>
@@ -601,6 +601,8 @@ async function ai(){
 }
 
 /* ── COMPLETION ────────────────────────────────────── */
+const DONE_TEXT = 'Thank you for completing the Technical SEO Specialist assessment. Your responses have been submitted to the MBN hiring team and will be reviewed within 3–5 business days.';
+
 /* ── FILING THE REPORT ─────────────────────────────────
    A failed submission here is a finished assessment lost. The candidate has
    already been shown a completion code, the report exists only in this tab's
@@ -686,7 +688,22 @@ async function resendUnsent(){
 
 
 async function complete(){
-  el('cpCode').textContent = S.code;
+  /* The completion code is deliberately NOT shown yet.
+
+     It used to appear the instant the interview ended, before anything had been
+     saved. A candidate could copy it and close the tab while the save, its
+     retries and the rescue card were all still in flight — closing the tab
+     cancels all three. They leave holding a code that matches nothing, no row
+     is written, no card is filed, and nobody finds out until someone goes
+     looking. Automated tests never caught it because a script sits and waits;
+     a real person reads "Assessment Complete", takes the code and goes.
+
+     Nothing on this screen reads as finished until the server confirms. */
+  el('cpIcon').textContent = '\u23F3';
+  el('cpCode').textContent = 'Filing\u2026';
+  el('cpSub').textContent  = 'Almost there \u2014 your assessment is being filed with the MBN hiring team. '
+    + 'This usually takes a few seconds. Please keep this tab open until it confirms.';
+  el('cpHint').textContent = 'Your completion code will appear here once your assessment is safely filed.';
   showScreen('sComplete');
 
   const payload = S.report || fallbackReport();
@@ -702,13 +719,29 @@ async function complete(){
   if(!S.report) payload.report_incomplete = true;
   S.payload = payload;
 
+  /* While the report is in flight it exists only in this tab. Closing now
+     destroys it, so make the browser ask first. */
+  const holdTab = e => { e.preventDefault(); e.returnValue = ''; return ''; };
+  window.addEventListener('beforeunload', holdTab);
+
   try{
     const d = await postReport(payload);
     // The worker may have suffixed the code to dodge a collision — show what it stored
-    if(d.code && d.code !== S.code){ S.code = d.code; el('cpCode').textContent = S.code; }
+    if(d.code) S.code = d.code;
+    el('cpIcon').textContent = '\u2713';
+    el('cpCode').textContent = S.code;
+    el('cpSub').textContent  = DONE_TEXT;
+    el('cpHint').textContent = 'Save this code. You may be asked to reference it during follow-up.';
     el('submitOk').classList.remove('hidden');
     clearSaved();
   }catch(err){
+    /* Show the code even though it isn't registered: the rescue card carries the
+       same code, so it is how this candidate gets matched to their answers. */
+    el('cpIcon').textContent = '\u26A0';
+    el('cpCode').textContent = S.code;
+    el('cpSub').textContent  = 'Your assessment is complete, but we could not file it automatically. '
+      + 'Please follow the instructions below before closing this page.';
+    el('cpHint').textContent = 'This code is not yet registered with MBN.';
     /* Say plainly that the code is not registered. The old wording called this
        a "note" while the code sat above it looking valid, so a candidate had no
        reason to think anything was wrong — and neither did we. */
@@ -745,6 +778,8 @@ async function complete(){
         b.disabled = false; b.textContent = 'Try sending again';
       }
     };
+  }finally{
+    window.removeEventListener('beforeunload', holdTab);
   }
 }
 

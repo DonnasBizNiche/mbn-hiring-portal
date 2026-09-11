@@ -379,10 +379,18 @@ async function browseReports(){
           const name = String(rep.candidate_name || 'Unknown').replace(/[<>]/g,'');
           const code = String(rep.completion_code || '').replace(/[<>]/g,'');
           const score = rep.score != null ? ` · ${rep.score}%` : '';
+          /* An unfinished assessment is still worth opening — the answers the
+             candidate did give are all there. It just must not be mistaken for
+             a finished one. */
+          const open = rep.status === 'in_progress'
+            ? ` <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;`
+              + `background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.45);color:#f59e0b">`
+              + `IN PROGRESS</span>`
+            : '';
           return `<button type="button" class="btn btn-sec" style="display:block;width:100%;`
             + `text-align:left;margin-bottom:6px;font-weight:400"`
             + ` onclick="openFromList('${code.replace(/'/g,"")}')">`
-            + `<strong>${name}</strong>${score}<br>`
+            + `<strong>${name}</strong>${score}${open}<br>`
             + `<span style="font-size:12px;opacity:.7">${code} · ${when}</span></button>`;
         }).join('');
     list.style.display = 'block';
@@ -614,6 +622,19 @@ function buildSections(r){
   const container = el('sections');
   container.innerHTML = '';
   let lastPhase = '';
+
+  /* The candidate never submitted. Their answers reached the server as they
+     were given, so everything up to the point they stopped is below — but there
+     is no AI report, and the record must not read as though there should be. */
+  if(r.status === 'in_progress'){
+    const note = document.createElement('div');
+    note.style.cssText = 'background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:var(--rs);padding:14px 16px;margin-bottom:16px;font-size:13px;line-height:1.7;color:var(--text)';
+    note.innerHTML = '<strong>Assessment not submitted.</strong> This candidate started the '
+      + 'assessment and did not reach the end — they may have closed the tab, or may still be '
+      + 'taking it. Their answers so far are saved and shown below. There is no AI report or '
+      + 'score because the assessment was never completed.';
+    container.appendChild(note);
+  }
 
   if(r.report_incomplete || r.report_truncated){
     const note = document.createElement('div');

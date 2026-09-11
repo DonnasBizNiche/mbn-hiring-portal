@@ -18,6 +18,36 @@ A Cloudflare Pages app that runs AI-driven conversational assessments for candid
 
 ---
 
+## The rule this portal is built on
+
+**A candidate's answers must never exist in only one place.**
+
+Every failure this portal has had is the same failure wearing different clothes. A
+25-minute assessment lived entirely in the candidate's browser until a single request at
+the very end, and anything that disturbed that request destroyed the work:
+
+| What went wrong | What it cost |
+|---|---|
+| Closing report truncated at `max_tokens` | No row, no card, a code matching nothing |
+| Closing report requested unstreamed, dropped in transit | `Error 500` after the whole interview |
+| Completion code shown *before* the save finished | Candidate copied it and closed the tab, cancelling the save, its retries and the rescue card |
+| Tab closed while the save was still in flight | Nothing stashed locally either — the stash only ran after all retries failed |
+
+Four causes, one outcome, two real candidates lost. Each was fixed in turn and a new one
+appeared, because every fix protected that final moment instead of removing it.
+
+There is now no such moment. `/api/progress` writes the transcript to the server after
+every answer, so the closing report is an *enrichment of a record that already exists*.
+If everything at the end fails — model, network, browser, tab — the answers are still in
+`assessment_reports`, flagged `in_progress`, readable in `/review`, and the report can be
+regenerated from them.
+
+**If you add anything to this portal, do not reintroduce a single point where the work
+only exists once.** `tools/check-worker.mjs` and `tools/check-progress.mjs` exist to make
+that regression loud.
+
+---
+
 ## Assessments
 
 | Role | File | Duration | Questions | Phases | Notes |
@@ -57,6 +87,14 @@ tools/                Developer utilities (not deployed as part of the app)
                       helpers. Run before pushing any assessment page change:
                       `node --check` only parses, and a page calling a function
                       that was never defined has shipped that way before
+  check-progress.mjs  node tools/check-progress.mjs — asserts the page claims a
+                      code on the server before the first question and saves
+                      every answer as it is given, and that neither can stall
+                      the interview if the server hangs or fails
+  check-worker.mjs    node tools/check-worker.mjs — runs the worker's storage
+                      routes against a stand-in table: the row accumulates
+                      instead of multiplying, an abandoned assessment is still
+                      readable, and nothing Postgres rejects reaches jsonb
   test-interview.js   Paste into the console ON an assessment page to play a
                       scripted candidate through the whole interview against the
                       live /api/chat. The only way to exercise the closing report
@@ -82,9 +120,11 @@ wrangler.toml         Cloudflare deployment config
 | Method | Path | What it does |
 |---|---|---|
 | POST | `/api/chat` | Proxies messages to Claude (Anthropic API). **Streams** — the response is a `text/event-stream` of Anthropic SSE frames, not a JSON message. |
-| POST | `/api/submit` | Saves report to Supabase + creates Teamwork task |
+| POST | `/api/progress` | The candidate's answers as they are given. `claim:true` reserves the completion code with a plain insert (409 if taken); every call after that upserts onto the same row. Rows are `status:'in_progress'` and file no Teamwork card. **This is what makes the end of the assessment stop mattering** — see below. |
+| POST | `/api/submit` | Saves report to Supabase + creates Teamwork task. Upserts onto the row `/api/progress` has been building and marks it `complete`. |
 | POST | `/api/rescue` | Last-resort path when `/api/submit` fails: files the candidate's full transcript onto the Teamwork board, with the server error, so a failed save is never a silent loss |
-| GET | `/api/report/:code` | Returns report JSON for reviewer dashboard (requires `X-Admin-Passcode` header) |
+| GET | `/api/reports` | Lists recent submissions, newest first, so a report can be found without an exact code (requires `X-Admin-Passcode`). Never returns `report_json`. |
+| GET | `/api/report/:code` | Returns report JSON for reviewer dashboard (requires `X-Admin-Passcode` header). Column values are merged over the stored JSON, which is the only reason an unfinished record has a name on it. |
 
 ---
 
@@ -136,6 +176,13 @@ report_json      jsonb              -- full Claude-generated report
 submission, plus `report_incomplete: true` (no AI summary could be parsed) or
 `report_truncated: true` (only part of it parsed). The review page shows the transcript
 whenever the per-question report is missing, so a submission is never unrecoverable.
+
+`report_json.status` is `'in_progress'` from the moment the assessment starts and becomes
+`'complete'` when `/api/submit` lands. An `in_progress` row is a real candidate mid-flight
+or one who never finished — it holds their answers so far and nothing else, and `/review`
+labels it as such. **Rows are keyed on `completion_code`, which is `UNIQUE`, and every
+write after the initial claim is an upsert** — so an assessment is one row that grows, not
+a row per answer. Don't add a write path here that inserts without `on_conflict`.
 
 > **Don't trust a project id written down here — check `SUPABASE_URL` in Cloudflare.**
 > This README used to name `vlanjprnlcvztskngocg` ("MBN Reporting Command Center") as the
@@ -245,3 +292,39 @@ empty. That is not a broken integration; it is the script doing what it was told
   happen again. Note "Completed Skills" is a **board column**, not a tasklist —
   earlier notes here described it as a tasklist, which sent people looking in the
   wrong place.
+- September 2026: two more losses, same root cause as everything above. First, the
+  completion code appeared the instant the interview ended — before the save was even
+  attempted. Candidates copied it and closed the tab, which cancelled the save, its
+  retries and the rescue card with it; the code they were holding matched nothing. The
+  completion screen now shows "Filing…" and only reveals the code once the server has
+  confirmed, guards the tab against being closed while that is in flight, and writes the
+  report to `localStorage` *before* the first attempt rather than after the last one
+  fails. `tools/check-completion.mjs` holds a save open and asserts all of that.
+- September 2026: completion codes were being generated by Claude, and a model asked for
+  something random produces what looks plausible rather than what is unlikely. Anchored
+  on the `MBN-7K4P` example in the prompt, it produced `MBN-8K2R`, `NLP-8K2R`, `NLP-8K2M`,
+  `MBN-9K2R`, `MBN-9T3K`, `MBN-9K3R` — three sharing "8K2", four within one character of
+  another. Two real candidates were issued the identical code, making their assessments
+  indistinguishable, and several earlier "lost report" hunts turned out to be a
+  near-identical code typed in by mistake. The page now generates the code itself from a
+  32-character alphabet with `I`, `O`, `0` and `1` removed; `tools/check-codes.mjs` draws
+  100,000 of them and asserts ~no collisions and a uniform distribution.
+- September 2026: **the moment was removed.** See "The rule this portal is built on"
+  above. `/api/progress` saves the transcript after every answer against a completion code
+  claimed on the server before the first question is asked, so an assessment exists in the
+  database from the moment it starts. Notes for anyone touching this:
+    - The claim is a plain insert, so a taken code returns 409 and the page picks another.
+      Every write after that upserts on `completion_code`. `/api/submit` upserts onto that
+      same row and flips `status` to `complete`.
+    - In-progress rows deliberately file **no** Teamwork card. An unfinished assessment is
+      not a candidate to review, but it is worth not losing.
+    - Both progress calls are bounded with an `AbortController`, and failures are silent
+      by design. `start()` waits on the claim before the first question appears, so an
+      unanswered socket would otherwise leave a candidate looking at an empty screen. A
+      progress save that doesn't land is not the candidate's problem: the next answer
+      tries again, and the local stash and final submit are still behind it.
+    - `/review` lists unfinished assessments with an **IN PROGRESS** tag and opens them to
+      the raw transcript with a banner saying there is no report because it was never
+      completed. `/api/report/:code` merges the column values over the stored JSON — that
+      is the only reason an unfinished record has a name on it, since a candidate who
+      hasn't submitted has no report blob to read one from.

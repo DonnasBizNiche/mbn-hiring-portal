@@ -100,14 +100,25 @@ function scrubForJsonb(value) {
   return value;
 }
 
-async function saveReport(env, row) {
-  return fetch(`${env.SUPABASE_URL}/rest/v1/assessment_reports`, {
+/* Writes a report row.
+
+   `claim` does a plain insert, so a completion code that is somehow already
+   taken comes back as 409 and the page can pick another. Every write after that
+   upserts on completion_code: the candidate owns that code for the rest of the
+   session, and each answer they give overwrites their own in-progress row
+   rather than creating a new one. The final report lands the same way, updating
+   the row the progress saves have been building. */
+async function saveReport(env, row, { claim = false } = {}) {
+  const url = claim
+    ? `${env.SUPABASE_URL}/rest/v1/assessment_reports`
+    : `${env.SUPABASE_URL}/rest/v1/assessment_reports?on_conflict=completion_code`;
+  return fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       apikey: env.SUPABASE_SERVICE_KEY,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-      Prefer: 'return=minimal',
+      Prefer: claim ? 'return=minimal' : 'resolution=merge-duplicates,return=minimal',
     },
     body: JSON.stringify(row),
   });
@@ -270,6 +281,58 @@ async function handle(request, env) {
     });
   }
 
+  /* POST /api/progress — the candidate's answers, saved as they are given.
+
+     Everything that has gone wrong with this portal has the same shape: a
+     25-minute assessment existed only in the candidate's browser until a single
+     moment at the end, and anything that disturbed that moment destroyed the
+     work. Truncated report, timed-out report, rejected save, tab closed while
+     saving — four different causes, one outcome, and two real candidates lost.
+
+     Each of those was fixed in turn and a new one appeared, because the fixes
+     kept protecting the moment instead of removing it. There is now no moment:
+     the transcript reaches the server after every answer, so the closing report
+     is an enrichment of a record that already exists. If everything at the end
+     fails, the answers are still here and the report can be regenerated.
+
+     Rows written here carry status 'in_progress' until /api/submit completes
+     them. No Teamwork card is filed for one — an unfinished assessment is not a
+     candidate to review, but it is worth not losing. */
+  if (url.pathname === '/api/progress' && request.method === 'POST') {
+    const body = scrubForJsonb(await request.json());
+    const code = body.completion_code;
+    if (!code) return json({ error: 'Missing completion code' }, 400);
+
+    const claim = body.claim === true;
+    const row = {
+      completion_code: code,
+      assessment_type: body.assessment_type || 'assessment',
+      candidate_name:  body.candidate_name || 'Unknown',
+      candidate_email: body.candidate_email || null,
+      referral_source: body.referral_source || null,
+      report_json: {
+        status: 'in_progress',
+        answered: body.answered || 0,
+        transcript: Array.isArray(body.transcript) ? body.transcript : [],
+        started_at: body.started_at || null,
+        last_seen_at: new Date().toISOString(),
+      },
+      submitted_at: new Date().toISOString(),
+    };
+
+    const res = await saveReport(env, row, { claim });
+
+    /* Only a claim can collide, and only then does the page need to act. */
+    if (claim && res.status === 409) return json({ error: 'Code already taken', taken: true }, 409);
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Progress save failed:', res.status, err);
+      return json({ error: `Progress save failed (${res.status})`, detail: err.slice(0, 300) }, 500);
+    }
+    return json({ ok: true, code });
+  }
+
   // POST /api/submit — save report to Supabase + create Teamwork task
   if (url.pathname === '/api/submit' && request.method === 'POST') {
     const report = scrubForJsonb(await request.json());
@@ -287,7 +350,7 @@ async function handle(request, env) {
       candidate_email: report.candidate_email || null,
       referral_source: report.referral_source || null,
       score: score,
-      report_json: { ...report, completion_code: code, teamwork },
+      report_json: { ...report, completion_code: code, teamwork, status: 'complete' },
       submitted_at: new Date().toISOString(),
     });
 
@@ -300,17 +363,10 @@ async function handle(request, env) {
     // Save to Supabase
     let supaRes = await saveReport(env, row());
 
-    // completion_code is UNIQUE. Claude picks the code, so a repeat is possible —
-    // suffix it and retry rather than throwing the whole submission away.
-    if (supaRes.status === 409) {
-      const err = await supaRes.text();
-      console.warn('Duplicate completion code, retrying with suffix:', code, err);
-      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      let suffix = '';
-      for (let i = 0; i < 2; i++) suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
-      code = `${code}${suffix}`;
-      supaRes = await saveReport(env, row());
-    }
+    /* No 409 handling here any more: this is an upsert on completion_code, and
+       it is meant to land on the row the candidate's progress saves created.
+       The code is generated by the page from a 34-billion keyspace and claimed
+       at the start of the session, so a collision is caught there instead. */
 
     if (!supaRes.ok) {
       const err = await supaRes.text();
@@ -387,17 +443,27 @@ async function handle(request, env) {
     }
 
     const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-    const res = await fetch(
+    const BASE = 'completion_code,candidate_name,candidate_email,assessment_type,score,submitted_at';
+    const headers = {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    };
+    const list = select => fetch(
       `${env.SUPABASE_URL}/rest/v1/assessment_reports` +
-      `?select=completion_code,candidate_name,candidate_email,assessment_type,score,submitted_at` +
-      `&order=submitted_at.desc&limit=${limit}`,
-      {
-        headers: {
-          apikey: env.SUPABASE_SERVICE_KEY,
-          Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-        },
-      }
+      `?select=${encodeURIComponent(select)}&order=submitted_at.desc&limit=${limit}`,
+      { headers }
     );
+
+    /* Pulls status out of report_json so the list can mark an assessment as
+       still in progress. If this PostgREST build won't alias a JSON key, fall
+       back to the plain columns rather than losing the whole list: a directory
+       without the in-progress flag is still far better than no directory, and
+       no directory is what left a real candidate unreachable. */
+    let res = await list(`${BASE},status:report_json->>status`);
+    if (!res.ok) {
+      console.warn('Supabase list: status alias rejected, retrying without it');
+      res = await list(BASE);
+    }
 
     if (!res.ok) {
       const err = await res.text();
@@ -437,13 +503,22 @@ async function handle(request, env) {
     const rows = await res.json();
     if (!Array.isArray(rows) || !rows.length) return json({ error: 'Not found' }, 404);
 
-    // Column values win over anything stale inside the stored JSON blob
+    /* Column values win over anything stale inside the stored JSON blob.
+       They also carry an in-progress record on their own: a candidate who has
+       not submitted yet has no report to spread, so their name and email exist
+       only as columns and the reviewer would otherwise open a nameless row. */
     const row = rows[0];
-    return json({
-      ...(row.report_json || {}),
+    const col = {
       completion_code: row.completion_code,
       submitted_at: row.submitted_at,
-    });
+      candidate_name: row.candidate_name,
+      candidate_email: row.candidate_email,
+      referral_source: row.referral_source,
+      assessment_type: row.assessment_type,
+      score: row.score,
+    };
+    for (const k of Object.keys(col)) if (col[k] === null || col[k] === undefined) delete col[k];
+    return json({ ...(row.report_json || {}), ...col });
   }
 
   // Static assets

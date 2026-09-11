@@ -584,7 +584,21 @@ async function ai(){
       const vis = raw.split('<<<REPORT_START>>>')[0].trim();
       if(vis){ if(bub) bub.innerHTML = fmt(vis); else addMsg('ai',vis); }
       S.report = parseReport(raw);
-      S.code   = (S.report && S.report.completion_code) || genCode();
+      /* The page generates the completion code, never the model.
+
+         Claude was asked to invent one, and it anchored hard on the MBN-7K4P
+         example in the prompt: MBN-8K2R, NLP-8K2R, NLP-8K2M, MBN-9K2R,
+         MBN-9T3K, MBN-9K3R. Those are six real codes and they are barely
+         distinguishable. Two candidates were eventually issued the same code,
+         which is how a language model "picking something random" fails — it
+         picks what looks plausible, not what is unlikely.
+
+         genCode() draws 7 characters from a 32-character alphabet: about 34
+         billion combinations, uniformly. The worker's duplicate-retry stays as
+         a backstop, but it should now never fire. The model still emits a code
+         in its report; it is deliberately ignored. */
+      S.code   = genCode();
+      if(S.report) S.report.model_suggested_code = S.report.completion_code || null;
       if(S.report) S.report.completion_code = S.code;
       S.done=true;
       el('progFill').style.width='100%';

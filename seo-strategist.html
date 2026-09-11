@@ -224,6 +224,8 @@
 const SAVE_KEY = 'mbn_strategist_progress_v1';
 const UNSENT_KEY = 'mbn_strategist_unsent_v1';
 
+const ASSESSMENT_TYPE = 'seo_strategist';
+
 const S = {
   candidate:  { name:'', email:'', source:'' },
   messages:   [],
@@ -439,7 +441,7 @@ function saveProgress(){
   if(S.done) return;
   try{
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      candidate: S.candidate, messages: S.messages, msgCount: S.msgCount,
+      candidate: S.candidate, messages: S.messages, msgCount: S.msgCount, code: S.code,
       pasteCount: S.pasteCount, startedAt: S.startedAt, savedAt: new Date().toISOString(),
     }));
     const p = el('savedPill');
@@ -469,6 +471,7 @@ function resume(){
   S.msgCount   = saved.msgCount || 0;
   S.pasteCount = saved.pasteCount || 0;
   S.startedAt  = saved.startedAt;
+  S.code       = saved.code || '';
   S.init       = (S.candidate.name || 'U').charAt(0).toUpperCase();
   showScreen('sAssess');
   setPhase(S.msgCount);
@@ -497,6 +500,10 @@ async function start(){
   ];
   showScreen('sAssess');
   setPhase(0);
+  /* Claim the completion code up front. From here every answer is saved against
+     it, so the assessment exists on the server long before the candidate
+     finishes. */
+  S.code = await claimCode();
   saveProgress();
   await ai();
 }
@@ -510,8 +517,85 @@ async function send(){
   S.messages.push({role:'user',content:t});
   S.msgCount++;
   setPhase(S.msgCount);
+  saveProgressToServer();     // not awaited: the interview never waits on this
   saveProgress();
   await ai();
+}
+
+/* ── SERVER-SIDE PROGRESS ──────────────────────────────
+   The candidate's answers go to the server as they are given, so the end of the
+   assessment stops being the moment everything depends on. Before this, a
+   25-minute assessment lived only in this browser until one request at the very
+   end, and anything that disturbed that request destroyed the work — a
+   truncated report, a timed-out report, a rejected save, a tab closed mid-save.
+   Each was fixed in turn and the next one appeared, because the fixes protected
+   that moment instead of removing it.
+
+   Failures here are deliberately silent: a progress save that does not land is
+   not the candidate's problem and must never interrupt their interview. The
+   next answer tries again, and the local stash plus the final submit are still
+   behind it. */
+/* A request that never comes back would be worse than one that fails: start()
+   waits on the claim before the first question appears, so an unanswered socket
+   would leave the candidate staring at an empty screen. Both progress calls are
+   therefore bounded — they give up and let the interview carry on. */
+function timeoutSignal(ms){
+  try{
+    const c = new AbortController();
+    setTimeout(() => c.abort(), ms);
+    return c.signal;
+  }catch(_){ return undefined; }
+}
+
+async function claimCode(){
+  for(let attempt = 1; attempt <= 3; attempt++){
+    const code = genCode();
+    try{
+      const r = await fetch('/api/progress',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        signal: timeoutSignal(8000),
+        body: JSON.stringify({
+          claim: true,
+          completion_code: code,
+          assessment_type: ASSESSMENT_TYPE,
+          candidate_name:  S.candidate.name,
+          candidate_email: S.candidate.email,
+          referral_source: S.candidate.source,
+          started_at: S.startedAt,
+          answered: 0,
+          transcript: [],
+        }),
+      });
+      if(r.ok) return code;
+      if(r.status === 409) continue;   // astronomically unlikely; try another
+      break;                            // server trouble — fall through
+    }catch(_){ break; }
+  }
+  /* Could not reach the server. Use the code anyway: the interview must not be
+     blocked by this, and the submit path still has its own retries and stash. */
+  return genCode();
+}
+
+async function saveProgressToServer(){
+  if(S.done || !S.code) return;
+  try{
+    await fetch('/api/progress',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      signal: timeoutSignal(15000),
+      body: JSON.stringify({
+        completion_code: S.code,
+        assessment_type: ASSESSMENT_TYPE,
+        candidate_name:  S.candidate.name,
+        candidate_email: S.candidate.email,
+        referral_source: S.candidate.source,
+        started_at: S.startedAt,
+        answered: S.msgCount,
+        transcript: transcript(),
+      }),
+    });
+  }catch(_){ /* silent by design — see above */ }
 }
 
 /* ── CHAT TRANSPORT ────────────────────────────────────
@@ -613,7 +697,9 @@ async function ai(){
          billion combinations, uniformly. The worker's duplicate-retry stays as
          a backstop, but it should now never fire. The model still emits a code
          in its report; it is deliberately ignored. */
-      S.code   = genCode();
+      /* The code was claimed at the start of the session and every answer has
+         been saved against it — do not mint a new one here. */
+      if(!S.code) S.code = genCode();
       if(S.report) S.report.model_suggested_code = S.report.completion_code || null;
       if(S.report) S.report.completion_code = S.code;
       S.done=true;

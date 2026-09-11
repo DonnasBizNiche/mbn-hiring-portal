@@ -97,6 +97,9 @@ for (const file of (process.argv.slice(2).length ? process.argv.slice(2) : ['seo
     /keep this tab open/i.test(page.getEl('cpSub').textContent), page.getEl('cpSub').textContent);
   check('tab-close guard is armed while in flight',
     page.listeners.some(l => l.t === 'beforeunload'), JSON.stringify(page.listeners.map(l => l.t)));
+  // If the tab is closed right now, this is the only surviving copy.
+  check('report is already on disk while the save is in flight',
+    Object.keys(page.store).some(k => /unsent/.test(k)), JSON.stringify(Object.keys(page.store)));
 
   release();
   await done;
@@ -105,6 +108,8 @@ for (const file of (process.argv.slice(2).length ? process.argv.slice(2) : ['seo
     page.getEl('cpCode').textContent === 'MBN-TEST', page.getEl('cpCode').textContent);
   check('success copy restored', page.getEl('cpSub').textContent === page.DONE_TEXT);
   check('tab-close guard released after', !page.listeners.some(l => l.t === 'beforeunload'));
+  check('stash cleared once the server confirms',
+    !Object.keys(page.store).some(k => /unsent/.test(k)), JSON.stringify(Object.keys(page.store)));
 
   // failure path: code shown, but clearly not registered, and guard released
   const p2 = loadPage(file);

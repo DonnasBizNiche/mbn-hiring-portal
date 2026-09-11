@@ -733,8 +733,17 @@ async function complete(){
   if(!S.report) payload.report_incomplete = true;
   S.payload = payload;
 
-  /* While the report is in flight it exists only in this tab. Closing now
-     destroys it, so make the browser ask first. */
+  /* Write the report to disk BEFORE trying to send it.
+
+     This used to happen only after all three retries had failed, which meant a
+     tab closed mid-save left nothing anywhere: not on the server, because the
+     request was cancelled, and not on disk, because the catch block never ran.
+     That is how a real candidate's assessment was lost. Stashing first makes
+     the in-flight window survivable — reopening the page resends it. The stash
+     is cleared the moment the server confirms. */
+  stashUnsent(payload);
+
+  /* And ask the browser not to let them close mid-save in the first place. */
   const holdTab = e => { e.preventDefault(); e.returnValue = ''; return ''; };
   window.addEventListener('beforeunload', holdTab);
 

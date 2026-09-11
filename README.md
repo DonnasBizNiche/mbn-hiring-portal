@@ -41,6 +41,11 @@ tools/                Developer utilities (not deployed as part of the app)
   test-submission.js  Paste into the browser console on the live site to file a
                       complete fake submission — checks Supabase, /review and the
                       Teamwork board without sitting through the interview
+  check-codes.mjs     node tools/check-codes.mjs — asserts the PAGE generates the
+                      completion code and that 100k of them collide ~never.
+                      Claude used to invent the code and anchored on the example
+                      in the prompt, producing near-identical codes until two
+                      real candidates were issued the same one
   check-completion.mjs node tools/check-completion.mjs — holds the save open and
                       asserts the completion screen still says "Filing…". A real
                       candidate was lost because the code appeared before the

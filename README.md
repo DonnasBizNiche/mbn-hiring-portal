@@ -323,6 +323,13 @@ empty. That is not a broken integration; it is the script doing what it was told
       unanswered socket would otherwise leave a candidate looking at an empty screen. A
       progress save that doesn't land is not the candidate's problem: the next answer
       tries again, and the local stash and final submit are still behind it.
+    - The upserts need a unique index on `completion_code`. It is supposed to be there —
+      but this README once named the wrong Supabase project entirely, and the end of a
+      25-minute assessment is not where a schema assumption should be discovered. If
+      Postgres returns 42P10 ("no unique or exclusion constraint matching the ON CONFLICT
+      specification"), `/api/submit` falls back to the plain insert it used before, and to
+      a suffixed code if the row genuinely exists. Submitting can never be worse than it
+      was before incremental saving existed.
     - `/review` lists unfinished assessments with an **IN PROGRESS** tag and opens them to
       the raw transcript with a banner saying there is no report because it was never
       completed. `/api/report/:code` merges the column values over the stored JSON — that

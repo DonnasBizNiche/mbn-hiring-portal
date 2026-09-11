@@ -134,6 +134,66 @@ r = await worker.fetch(post('/api/progress', { completion_code: 'A', transcript:
 check('a storage failure surfaces the reason rather than a bare 500',
   r.status === 500 && /permission denied/.test((await r.json()).detail || ''));
 
+/* ── the schema assumption this all rests on ────────────────────────────── */
+console.log('\n── if the unique index is not there ──');
+/* The upserts need a unique index on completion_code. It is supposed to exist —
+   but the README once named the wrong Supabase project entirely, and the end of
+   a 25-minute assessment is not where a schema assumption should be discovered.
+   Postgres 42P10 is exactly that case. Submitting must never be worse than it
+   was before incremental saving existed. */
+const PG_42P10 = '{"code":"42P10","message":"there is no unique or exclusion constraint matching the ON CONFLICT specification"}';
+
+let attempts = [];
+globalThis.fetch = async (u, init) => {
+  const url = String(u);
+  if (url.includes('teamwork')) return new Response('{"id":"1"}', { status: 200 });
+  if (url.includes('/stages/')) return new Response('{}', { status: 200 });
+  const upsert = url.includes('on_conflict=completion_code');
+  attempts.push({ upsert, body: JSON.parse(init.body) });
+  if (upsert) return new Response(PG_42P10, { status: 400 });
+  return new Response('', { status: 201 });
+};
+r = await worker.fetch(post('/api/submit', {
+  completion_code: 'ABC-1234', candidate_name: 'Saba', overall_score: 82,
+  transcript: [{ role: 'user', content: 'an answer' }],
+}), env);
+check('a rejected upsert still saves the report', r.status === 200, r.status);
+check('by falling back to a plain insert', attempts.length === 2 && attempts[1].upsert === false,
+  JSON.stringify(attempts.map(a => a.upsert)));
+check('the report itself is intact in the fallback',
+  attempts[1] && attempts[1].body.report_json.transcript.length === 1);
+
+// and if the row genuinely does already exist, the report still lands somewhere
+attempts = [];
+let inserts = 0;
+globalThis.fetch = async (u, init) => {
+  const url = String(u);
+  if (url.includes('teamwork')) return new Response('{"id":"1"}', { status: 200 });
+  if (url.includes('/stages/')) return new Response('{}', { status: 200 });
+  const upsert = url.includes('on_conflict=completion_code');
+  attempts.push({ upsert, body: JSON.parse(init.body) });
+  if (upsert) return new Response(PG_42P10, { status: 400 });
+  return ++inserts === 1
+    ? new Response('duplicate key value violates unique constraint', { status: 409 })
+    : new Response('', { status: 201 });
+};
+r = await worker.fetch(post('/api/submit', { completion_code: 'ABC-1234', candidate_name: 'Saba' }), env);
+const suffixed = await r.json();
+check('a taken code in the fallback is suffixed rather than lost', r.status === 200, r.status);
+check('and the caller is told the code it was actually stored under',
+  suffixed.code !== 'ABC-1234' && suffixed.code.startsWith('ABC-1234-'), suffixed.code);
+
+// a real storage failure must NOT be swallowed by that fallback
+globalThis.fetch = async u => {
+  if (String(u).includes('teamwork')) return new Response('{"id":"1"}', { status: 200 });
+  if (String(u).includes('/stages/')) return new Response('{}', { status: 200 });
+  return new Response('permission denied', { status: 403 });
+};
+r = await worker.fetch(post('/api/submit', { completion_code: 'ABC-1234', candidate_name: 'Saba' }), env);
+check('an unrelated failure is still reported, not retried into silence', r.status === 500, r.status);
+check('with its reason, so the page can rescue to Teamwork',
+  /permission denied/.test((await r.json()).detail || ''));
+
 /* ── the reviewer's directory ───────────────────────────────────────────── */
 console.log('\n── the reviewer directory ──');
 const listReq = () => new Request('https://x/api/reports', { headers: { 'X-Admin-Passcode': 'p' } });
